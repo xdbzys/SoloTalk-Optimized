@@ -416,10 +416,12 @@ const DL = [
   ['docs', '全部文档', '评分标准与算法对照、集成指南、内存体积优化报告、现状核查结论、试题出处清单。', '约 23 KB'],
 ];
 function renderDownloads() {
-  // 固定链接：用当前访问地址（含 sharecode）展示，保证用户复制到的就是分发出去的完整链接
-  const fixed = location.origin + location.pathname + location.search;
+  // 固定下载入口统一指向 GitHub Release（链接恒定，后续优化复用）
   const link = $('#fixed-link');
-  if (link) { link.href = fixed; link.textContent = fixed; }
+  if (link && !/github\.com/.test(link.href || '')) {
+    link.href = 'https://github.com/xdbzys/SoloTalk-Optimized/releases';
+    link.textContent = link.href;
+  }
   $('#download-list').innerHTML = DL.map(([k,t,d,s]) => `
     <div class="dl-card"><h3>${esc(t)}</h3><p>${esc(d)}</p>
       <div class="dl-foot"><span class="muted">${esc(s)}</span>
