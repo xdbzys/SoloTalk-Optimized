@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.Python
+
+# 日志与临时
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 运行时下载缓存（避免误提交大依赖）
+/node_modules/
+/dist/

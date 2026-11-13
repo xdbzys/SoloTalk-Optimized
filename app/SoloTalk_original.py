@@ -1,0 +1,7626 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+SoloTalk 2.4 — 单机版听说模考编辑器
+依赖安装：pip install PyQt5 pyttsx3 sounddevice vosk python-vlc numpy fastembed edge-tts
+（edge-tts 为高质量神经语音，需联网；未安装或断网时自动回退系统 SAPI5 语音）
+所有控制台输出（print / 异常栈 / 崩溃栈）都会同步写入 _solo_diag.log（打包后写用户主目录），方便无控制台环境排查。
+
+Vosk 英语模型请下载并解压到本脚本同级目录，或修改 MODEL_PATH 变量。
+bge-small-en-v1.5 模型：
+  方法A - 手动下载：
+      $env:HF_ENDPOINT="https://hf-mirror.com"
+hf download Xenova/bge-small-en-v1.5 --local-dir "脚本同级目录/bge-small-en-v1.5"
+      额外步骤：将 onnx/model.onnx 复制一份为 model_optimized.onnx 放到根目录
+               （fastembed 需要此文件名，程序启动时会自动尝试复制）
+    方法B - 自动下载（不知道，没试过，可能不行）：
+      pip install fastembed 后首次运行会自动从 HuggingFace 下载。
+
+如不使用此功能（或模型目录不存在），Part B 将回退到 Jaccard 相似度，Part C 回退到关键词匹配，不影响基本使用。
+"""
+
+import sys
+import os
+import json
+import re
+import hashlib
+import weakref
+import zipfile
+import tempfile
+import wave
+import datetime
+import time
+import threading
+import ctypes
+from pathlib import Path
+import urllib.request
+# 确保 VLC 可被找到（双击运行时工作目录可能不在脚本同级）
+# 打包后支持 one-folder 与 one-file 两种模式：
+#  - one-folder：exe 与 VLC/ 并排，取 exe 所在目录
+#  - one-file：PyInstaller 解压到临时 _MEIPASS，VLC/ 被一并发到该目录
+if getattr(sys, "frozen", False):
+    _BASE_DIR = os.path.dirname(sys.executable)        # one-folder
+    if hasattr(sys, "_MEIPASS"):                        # one-file
+        _BASE_DIR = sys._MEIPASS
+    # PyInstaller 6.x 在部分环境下 sys.executable 可能指向 _internal 内部，
+    # 导致 _BASE_DIR 多一层嵌套。检测并修正。
+    if os.path.basename(_BASE_DIR) == "_internal":
+        _BASE_DIR = os.path.dirname(_BASE_DIR)
+else:
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_SCRIPT_DIR = _BASE_DIR
+_VLC_DIR = os.path.join(_BASE_DIR, "VLC")
+_INTERNAL_DIR = os.path.join(_BASE_DIR, "_internal")  # PyInstaller one-folder 数据目录
+# PyInstaller 6.x 可能把数据文件放到 _internal/ 下，而不是 exe 同级
+if os.path.isdir(_INTERNAL_DIR) and not os.path.isdir(_VLC_DIR):
+    _VLC_DIR = os.path.join(_INTERNAL_DIR, "VLC")
+
+# ===== DLL 搜索路径（必须在任何第三方 import 之前注册）=====
+# ===== 模块级 DLL 目录 cookie（防止 os.add_dll_directory 被 GC 移除）=====
+_dll_dir_cookies = []
+
+if sys.platform == "win32":
+    try:
+        ctypes.windll.kernel32.AddDllDirectory(_VLC_DIR)
+    except Exception:
+        pass
+    try:
+        ctypes.windll.kernel32.AddDllDirectory(_SCRIPT_DIR)
+    except Exception:
+        pass
+    if getattr(sys, "frozen", False) and os.path.isdir(_INTERNAL_DIR):
+        try:
+            ctypes.windll.kernel32.AddDllDirectory(_INTERNAL_DIR)
+        except Exception:
+            pass
+        # 注意：不将 _INTERNAL_DIR 加入 os.add_dll_directory！
+        # _internal/ 包含大量其他包的 DLL（PyQt5、numpy），可能与 onnxruntime
+        # 产生 CRT 版本冲突。只添加 onnxruntime 自己的目录。
+        _ort_dll_dir = os.path.join(_INTERNAL_DIR, "onnxruntime", "capi")
+        if os.path.isdir(_ort_dll_dir):
+            try:
+                ctypes.windll.kernel32.AddDllDirectory(_ort_dll_dir)
+            except Exception:
+                pass
+            if hasattr(os, "add_dll_directory"):
+                try:
+                    _dll_dir_cookies.append(os.add_dll_directory(_ort_dll_dir))
+                except Exception as e:
+                    pass
+
+def _pick_log_path():
+    """决定 _solo_diag.log 的位置：
+    - 源码运行：脚本同级目录
+    - 打包运行：exe 同级目录优先（用户期望日志就在 exe 旁边）；
+      若 exe 所在目录不可写（如 Program Files），回退到用户主目录"""
+    if not getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "_solo_diag.log")
+    exe_log = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "_solo_diag.log")
+    try:
+        with open(exe_log, "a", encoding="utf-8"):
+            pass
+        return exe_log
+    except Exception:
+        return os.path.join(os.path.expanduser("~"), "_solo_diag.log")
+
+
+# 日志路径：开发时脚本同级；打包后 exe 同级（不可写则回退用户主目录）
+_diag_project_log = _pick_log_path()
+
+# ---------- 控制台输出全量落盘：所有 print() 同时写入控制台和 _solo_diag.log ----------
+# windowed 模式（无控制台，sys.stdout 为 None）下只写日志，控制台部分自动跳过。
+class _ConsoleTee:
+    """替换 sys.stdout/stderr：保留原控制台输出，同时把每一行写入日志文件。"""
+
+    def __init__(self, stream, log_path, is_error=False):
+        self._stream = stream          # 原始流，windowed 模式下为 None
+        self._log_path = log_path
+        self._is_error = is_error
+        self._buf = []                 # 行缓冲：攒完整行再写日志，避免半行/时间戳错位
+        self._lock = threading.Lock()
+
+    def write(self, data):
+        if not data:
+            return
+        try:
+            if self._stream is not None:
+                self._stream.write(data)
+                self._stream.flush()
+        except Exception:
+            pass
+        with self._lock:
+            self._buf.append(data)
+            joined = "".join(self._buf)
+            parts = joined.split("\n")
+            self._buf = [parts[-1]] if parts[-1] else []
+            for line in parts[:-1]:
+                self._flush_line(line)
+
+    def flush(self):
+        try:
+            if self._stream is not None:
+                self._stream.flush()
+        except Exception:
+            pass
+        with self._lock:
+            tail = "".join(self._buf)
+            if tail:
+                self._flush_line(tail)
+            self._buf = []
+
+    def _flush_line(self, line):
+        if not line:
+            return
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tag = "STDERR" if self._is_error else "OUT"
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as f:
+                f.write(f"[{ts}][{tag}] {line}\n")
+        except Exception:
+            pass
+
+    def isatty(self):
+        return False
+
+    @property
+    def encoding(self):
+        return getattr(self._stream, "encoding", "utf-8")
+
+    def fileno(self):
+        return -1
+
+    def writable(self):
+        return True
+
+
+def _install_console_tee():
+    sys.stdout = _ConsoleTee(sys.stdout, _diag_project_log)
+    sys.stderr = _ConsoleTee(sys.stderr, _diag_project_log, is_error=True)
+
+
+_install_console_tee()
+
+# ---------- 全局异常钩子：把未捕获异常写入日志 ----------
+# windowed 模式（console=False）下无控制台，异常直接静默闪退。
+# 自定义 sys.excepthook 后，Python 异常（含 Qt 槽函数里的）都会落盘到 _solo_diag.log，
+# 便于定位崩溃根因。
+def _log_exception(exc_type, exc_value, exc_tb):
+    try:
+        import traceback
+        tb_text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    except Exception:
+        tb_text = f"{exc_type}: {exc_value}"
+    msg = f"\n[EXCEPTION] {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{tb_text}"
+    for _p in ({os.path.join(_SCRIPT_DIR, '_solo_diag.log'), _diag_project_log}
+               if getattr(sys, "frozen", False) else
+               {os.path.join(_SCRIPT_DIR, '_solo_diag.log')}):
+        try:
+            with open(_p, "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
+        except Exception:
+            pass
+    # SystemExit 正常退出，不额外处理；其余异常走默认处理（windowed 下无输出，无害）
+    if exc_type is not SystemExit:
+        try:
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+        except Exception:
+            pass
+
+sys.excepthook = _log_exception
+
+# faulthandler：捕获 C 层崩溃（如 VLC 原生库段错误/访问冲突）。
+# 崩溃时把各线程的 Python 调用栈 dump 到日志文件，Python 异常钩子抓不到的
+# 底层崩溃靠它留痕。
+try:
+    import faulthandler
+    _fh_path = (os.path.join(os.path.expanduser("~"), "_solo_diag.log")
+                if getattr(sys, "frozen", False)
+                else os.path.join(_SCRIPT_DIR, "_solo_diag.log"))
+    _fh_file = open(_fh_path, "a", encoding="utf-8", buffering=1)
+    faulthandler.enable(file=_fh_file, all_threads=True)
+except Exception:
+    pass
+print(f"=== SoloTalk startup ===")
+print(f"log_path={_diag_project_log}")
+print(f"frozen={getattr(sys, 'frozen', False)}")
+print(f"executable={sys.executable}")
+print(f"_BASE_DIR={_BASE_DIR}")
+print(f"_INTERNAL_DIR={_INTERNAL_DIR}")
+print(f"_INTERNAL_DIR exists={os.path.isdir(_INTERNAL_DIR)}")
+if os.path.isdir(_INTERNAL_DIR):
+    print(f"_INTERNAL_DIR children (first 30): {sorted(os.listdir(_INTERNAL_DIR))[:30]}")
+# onnxruntime DLL 预加载由 pyi_rth_aaaa_preload_ort.py (runtime hook) 完成
+# — 必须在任何 Python import 之前执行，否则 CRT 版本冲突导致 error 1114
+
+
+def _resolve_model_dir(name):
+    """查找模型/资源目录，按优先级返回第一个存在的路径。
+    one-folder 打包时 PyInstaller 把 datas 放到 _internal/，源码运行时在脚本同级。
+    优先级：① _BASE_DIR/name（exe 同级）② _INTERNAL_DIR/name（_internal 子目录）③ cwd/name"""
+    for base in (_BASE_DIR, _INTERNAL_DIR, os.getcwd()):
+        p = os.path.join(base, name)
+        if os.path.isdir(p):
+            return p
+    return os.path.join(_BASE_DIR, name)  # 都不存在返回默认路径，让调用方自行处理
+
+
+def _resolve_resource_file(name):
+    """查找资源文件（图标等），与 _resolve_model_dir 同优先级。找不到返回 None。"""
+    for base in (_BASE_DIR, _INTERNAL_DIR, os.getcwd()):
+        p = os.path.join(base, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+# ------------------ UI 字体：HarmonyOS Sans SC（鸿蒙，免费可商用） ------------------
+# ⚠️ 背景：PyQt5 的 Fusion 风格在 Windows 上默认解析出的字体是 **SimSun（宋体）9pt**，
+#    整个程序所有中文都在用宋体渲染，观感很别扭 —— 必须显式覆盖全局字体。
+# ⚠️ 字体文件缺失（比如没打进包）时静默回退到系统字体，绝不能因字体导致启动失败。
+#    HarmonyOS Sans SC 版权：Copyright 2021 Huawei Device Co., Ltd. & 汉仪，免费可商用。
+_FONT_FILES = {
+    "regular": "fonts/HarmonyOS_Sans_SC_Regular.ttf",
+    "medium":  "fonts/HarmonyOS_Sans_SC_Medium.ttf",
+}
+_FONT_FALLBACK = ["Segoe UI", "Microsoft YaHei", "PingFang SC"]
+
+# 可在「更多 → 个性化」里切换的界面字体。value 是 Qt 字体族名，
+# 只有内嵌鸿蒙用这个哨兵 key —— 不用 None，否则"用户显式选了鸿蒙"和"用户没设置过"
+# 在 JSON 里都是 null，没法区分。
+EMBEDDED_FONT_KEY = "__embedded_harmonyos__"
+DEFAULT_FONT_CHOICE = "Microsoft YaHei UI"      # 默认界面字体（用户指定）
+
+FONT_CHOICES = [
+    ("微软雅黑 UI", "Microsoft YaHei UI"),        # 默认
+    ("鸿蒙 HarmonyOS Sans SC", EMBEDDED_FONT_KEY),  # 随包内嵌（免费可商用）
+    ("楷体", "楷体"),
+    ("思源黑体 Noto Sans SC", "Noto Sans SC"),
+    ("系统默认 Segoe UI", "Segoe UI"),
+]
+SETTINGS_FONT_KEY = "ui_font"
+
+_UI_FONT = {"regular": None, "medium": None, "choice": None}   # 装填 Qt 里注册出的族名
+
+# 用 _bind_font() 登记过的控件：用户切换字体时统一刷新（弱引用，避免拦住控件回收）
+_FONT_BOUND = []
+
+
+def _load_app_fonts():
+    """把内嵌的鸿蒙字体注册进 QFontDatabase（必须在 QApplication 之后调用）。
+
+    结果写进模块级 `_UI_FONT`：`{"regular": 族名或 None, "medium": 族名或 None}`，
+    None 表示文件没找到/加载失败，此时调用方要用 `_FONT_FALLBACK`。
+    """
+    for key, rel in _FONT_FILES.items():
+        try:
+            p = _resolve_resource_file(rel)
+            if not p:
+                print(f"[FONT] 未找到字体文件，跳过: {rel}")
+                continue
+            fid = QFontDatabase.addApplicationFont(p)
+            if fid < 0:
+                print(f"[FONT] 加载失败: {rel}")
+                continue
+            names = QFontDatabase.applicationFontFamilies(fid)
+            if names:
+                _UI_FONT[key] = names[0]
+                print(f"[FONT] 已加载 {rel} -> {names[0]}")
+        except Exception as e:
+            print(f"[FONT] 加载异常 {rel}: {e}")
+    return _UI_FONT
+
+
+def _available_font_choices():
+    """列出本机可用的字体选项：[(显示名, 族名或 None)]，第一个永远是内嵌鸿蒙。"""
+    try:
+        installed = set(QFontDatabase().families())
+    except Exception:
+        installed = set()
+    out = []
+    for label, key in FONT_CHOICES:
+        if key == EMBEDDED_FONT_KEY:
+            # 内嵌鸿蒙没加载成功就不列出来，免得选了没反应
+            if _UI_FONT.get("regular"):
+                out.append((label, key))
+        elif key in installed:
+            out.append((label, key))
+    return out
+
+
+def _ui_font(size_px, medium=False, bold=False):
+    """生成 UI 字体：用户选定字体 > 内嵌鸿蒙 > Segoe UI + 雅黑。
+
+    size_px 用像素（样式表里写的也是 px，保持一致）；默认 12px = 9pt，
+    与改版前同尺寸，避免撑破练习页等固定尺寸排版。
+    medium=True 时优先用鸿蒙 Medium 字重（比合成粗体干净）；选了系统字体就用 QFont.Bold 模拟。
+    """
+    f = QFont()
+    chosen = _UI_FONT.get("choice")
+    fam_medium = _UI_FONT.get("medium")
+    fam_regular = _UI_FONT.get("regular")
+    if chosen == EMBEDDED_FONT_KEY:
+        chosen = None          # 哨兵 → 走内嵌鸿蒙那条分支
+
+    if chosen:
+        f.setFamilies([chosen] + [x for x in _FONT_FALLBACK if x != chosen])
+        f.setWeight(QFont.Bold if (medium or bold) else QFont.Normal)
+    elif medium and fam_medium:
+        # 鸿蒙 Medium 是独立族名，本身就是中黑体，不要再叠合成粗体
+        f.setFamily(fam_medium)
+        f.setWeight(QFont.Normal)
+    elif fam_regular:
+        f.setFamily(fam_regular)
+        f.setWeight(QFont.Bold if bold else QFont.Normal)
+    else:
+        f.setFamilies(_FONT_FALLBACK)
+        f.setWeight(QFont.Bold if (bold or medium) else QFont.Normal)
+    f.setPixelSize(size_px)
+    return f
+
+
+def _bind_font(widget, size_px, medium=False, bold=False):
+    """给控件设 UI 字体并登记，用户切换字体时能跟着一起变。返回该控件方便链式调用。"""
+    try:
+        widget.setFont(_ui_font(size_px, medium=medium, bold=bold))
+        _FONT_BOUND.append((weakref.ref(widget), size_px, medium, bold))
+    except Exception:
+        pass
+    return widget
+
+
+def _refresh_bound_fonts():
+    """字体切换后调用：把所有登记过的控件字体重设一遍（已销毁的自动剔除）。"""
+    global _FONT_BOUND
+    alive = []
+    for ref, size_px, medium, bold in _FONT_BOUND:
+        w = ref()
+        if w is None:
+            continue
+        try:
+            w.setFont(_ui_font(size_px, medium=medium, bold=bold))
+            alive.append((ref, size_px, medium, bold))
+        except RuntimeError:
+            pass          # 底层 C++ 对象已被销毁（Qt 经典坑）
+    _FONT_BOUND = alive
+
+
+def _svg_pixmap(paths, color, size):
+    """把一组 SVG path 渲成单色线性图标（Fluent 风格：描边、无填充）。
+
+    ⚠️ QtSvg 缺失时返回空 pixmap（静默降级，不崩）。图标用 SVG 而不是图标字体，
+    是因为 Win10 只有旧的 Segoe MDL2 Assets、码点和 Win11 的 Segoe Fluent Icons 不一致，
+    分发给学生机不可控。
+    """
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    if _QSvgRenderer is None:
+        return pix
+    body = "".join(f'<path d="{d}"/>' for d in paths)
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}"'
+           f' viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.8"'
+           f' stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+    r = _QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    p = QPainter(pix)
+    r.render(p)
+    p.end()
+    return pix
+
+
+def _repolish_all(app=None):
+    """强制所有控件重新套一遍样式表（返回处理了几个控件）。
+
+    ⚠️ 这一步不能省。全程序有大量控件是靠 `setStyleSheet("font-size:14px")` 定字号的
+    （`MorePage._sub()` / `_para()` 等），它们走 QStyleSheetStyle 那条路，Qt 会把解析出的
+    字体**缓存**在样式里。只调 `QApplication.setFont()` 的话它们根本不跟着变 ——
+    现象就是"换字体"后半页变了半页没变。unpolish + polish 一次把缓存冲掉即可。
+    """
+    app = app or QApplication.instance()
+    if app is None:
+        return 0
+    n = 0
+    for w in app.allWidgets():
+        try:
+            st = w.style()
+            st.unpolish(w)
+            st.polish(w)
+            w.update()
+            n += 1
+        except RuntimeError:
+            pass          # 底层 C++ 对象已销毁（Qt 经典坑）
+    return n
+
+
+def _set_ui_font_choice(family):
+    """切换界面字体：立即应用到整个程序（含已登记控件 + QSS 定字号的控件）。返回是否成功。"""
+    _UI_FONT["choice"] = family
+    app = QApplication.instance()
+    if app is None:
+        return False
+    app.setFont(_ui_font(12))
+    _refresh_bound_fonts()
+    n = _repolish_all(app)
+    _shown = "鸿蒙 HarmonyOS Sans SC" if family in (None, EMBEDDED_FONT_KEY) else family
+    print(f"[FONT] 界面字体已切换为: {_shown}（重刷 {n} 个控件）")
+    return True
+
+
+# 切换工作目录到脚本所在目录
+if os.getcwd() != _SCRIPT_DIR:
+    try:
+        os.chdir(_SCRIPT_DIR)
+    except Exception:
+        pass
+
+if sys.platform == "win32":
+    # 设置插件路径环境变量，让 libvlc 能找到 plugins 目录
+    if os.path.isdir(_VLC_DIR):
+        # exe 同级存在 VLC/（打包携带或手动复制）
+        os.environ["VLC_PLUGIN_PATH"] = _VLC_DIR
+        _vlc_dll = os.path.join(_VLC_DIR, "libvlc.dll")
+        if os.path.isfile(_vlc_dll):
+            os.environ["PYTHON_VLC_LIB_PATH"] = _vlc_dll
+    else:
+        # 回退：从注册表读取 VLC 安装路径，显式设置插件路径
+        # python-vlc 内部通过 ctypes 找 DLL 时会查注册表，但找到 DLL 后
+        # 不一定能正确定位 plugins 目录（尤其是 portable 版 VLC）。
+        # 手动读出路径并设置 VLC_PLUGIN_PATH，确保 vlc.Instance() 不失败。
+        _reg_vlc = None
+        try:
+            import winreg
+            for _hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for _sub in (r"SOFTWARE\VideoLAN\VLC",
+                             r"SOFTWARE\WOW6432Node\VideoLAN\VLC"):
+                    try:
+                        _key = winreg.OpenKey(_hive, _sub)
+                        # VLC 注册表存的是 "InstallDir"，不是 (Default) 值
+                        _reg_vlc, _ = winreg.QueryValueEx(_key, "InstallDir")
+                        winreg.CloseKey(_key)
+                        if _reg_vlc and os.path.isdir(_reg_vlc):
+                            break
+                    except OSError:
+                        continue
+                if _reg_vlc:
+                    break
+        except Exception:
+            pass
+        if _reg_vlc and os.path.isdir(_reg_vlc):
+            _vlc_dll = os.path.join(_reg_vlc, "libvlc.dll")
+            if os.path.isfile(_vlc_dll):
+                os.environ["VLC_PLUGIN_PATH"] = _reg_vlc
+                os.environ["PYTHON_VLC_LIB_PATH"] = _vlc_dll
+
+import pyttsx3
+import sounddevice as sd
+import numpy as np
+import vlc
+
+# 注：录音写盘用标准库 wave（等价 scipy.io.wavfile.write），避免仅为这一个函数引入
+#     scipy 及其 OpenBLAS 依赖（约 70MB 打包体积）。录音固定 int16 / 单声道 / 16kHz。
+
+# ---------- BGE 嵌入模型（Part B/C 语义相似度，可选） ----------
+_BGE_MODEL_DIR = _resolve_model_dir("bge-small-en-v1.5")
+_bge_embedder = None  # 延迟加载，首次使用时初始化
+
+try:
+    import onnxruntime
+    print(f"onnxruntime import OK, version={onnxruntime.__version__}")
+except Exception as e:
+    print(f"onnxruntime import FAILED: {e}")
+    import traceback as _tb
+    print(_tb.format_exc())
+
+try:
+    from fastembed import TextEmbedding
+    _FASTEMBED_AVAILABLE = True
+    print("fastembed import OK")
+except ImportError as e:
+    _FASTEMBED_AVAILABLE = False
+    print(f"fastembed import FAILED: {e}")
+
+
+def _get_bge_model():
+    """获取 BGE 嵌入模型实例（懒加载单例）。
+    模型目录存在且 fastembed 已安装时返回 TextEmbedding 对象，
+    否则返回 None（调用方应回退到原始评估方法）。
+    完全离线运行：不连接 HuggingFace 或任何外部服务。"""
+    global _bge_embedder
+    if _bge_embedder is not None:
+        if isinstance(_bge_embedder, TextEmbedding):
+            print("[BGE] 返回已缓存的模型实例")
+            return _bge_embedder
+        else:
+            print("[BGE] 已标记为不可用，跳过加载")
+            return None
+
+    print("[BGE] === 开始加载 BGE 嵌入模型 ===")
+    print(f"[BGE] 解析到的模型目录: {_BGE_MODEL_DIR}")
+    print(f"[BGE] 路径解析逻辑: _BASE_DIR={_BASE_DIR}, _INTERNAL_DIR={_INTERNAL_DIR}")
+    print(f"[BGE] 目录存在: {os.path.isdir(_BGE_MODEL_DIR)}")
+    print(f"[BGE] fastembed 可用: {_FASTEMBED_AVAILABLE}")
+
+    if not _FASTEMBED_AVAILABLE:
+        print("[BGE] ❌ fastembed 未安装，回退简单匹配")
+        _bge_embedder = []
+        return None
+    if not os.path.isdir(_BGE_MODEL_DIR):
+        print(f"[BGE] ❌ 模型目录不存在: {_BGE_MODEL_DIR}")
+        # 列出可能的位置帮助排查
+        for d in (_BASE_DIR, _INTERNAL_DIR, os.getcwd()):
+            p = os.path.join(d, "bge-small-en-v1.5")
+            print(f"[BGE]   检查 {d}/bge-small-en-v1.5 → {'√ 存在' if os.path.isdir(p) else '✗ 不存在'}")
+        _bge_embedder = []
+        return None
+
+    # 检查必需的 ONNX 模型文件是否存在
+    onnx_file = os.path.join(_BGE_MODEL_DIR, "model_optimized.onnx")
+    print(f"[BGE] model_optimized.onnx: {'√' if os.path.isfile(onnx_file) else '✗ 不存在'}")
+    if not os.path.isfile(onnx_file):
+        # 尝试从 onnx/ 子目录复制
+        src = os.path.join(_BGE_MODEL_DIR, "onnx", "model.onnx")
+        if os.path.isfile(src):
+            print("[BGE] 尝试从 onnx/model.onnx 复制...")
+            try:
+                import shutil
+                shutil.copy2(src, onnx_file)
+                print("[BGE] 复制成功")
+            except Exception as e:
+                print(f"[BGE] 复制失败: {e}")
+        if not os.path.isfile(onnx_file):
+            print(f"[BGE] ❌ ONNX 文件缺失: {onnx_file}")
+            _bge_embedder = []
+            return None
+
+    # 强制离线模式
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    cache_dir = os.path.dirname(_BGE_MODEL_DIR)
+    print(f"[BGE] fastembed cache_dir: {cache_dir}")
+    print(f"[BGE] fastembed 将在此目录下查找 bge-small-en-v1.5/ 子目录")
+
+    try:
+        _bge_embedder = TextEmbedding(
+            model_name="BAAI/bge-small-en-v1.5",
+            cache_dir=cache_dir,
+            local_files_only=True,
+        )
+        print("[BGE] TextEmbedding 创建成功，预热中...")
+        list(_bge_embedder.embed(["warmup"]))
+        print("[BGE] ✅ BGE 嵌入模型加载成功！Part B/C 使用语义相似度。")
+        return _bge_embedder
+    except Exception as e:
+        print(f"[BGE] ❌ 模型加载失败: {e}")
+        import traceback
+        traceback.print_exc()
+        _bge_embedder = []
+        return None
+
+
+def _embedding_cosine_similarity(text1, text2, embedder):
+    """用 BGE 嵌入计算两句英文的余弦相似度。返回 0.0~1.0 的浮点数。"""
+    if not text1.strip() or not text2.strip():
+        return 0.0
+    embs = list(embedder.embed([text1, text2]))
+    a, b = embs[0], embs[1]
+    dot = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    sim = float(dot / (norm_a * norm_b))
+    # BGE 相似度范围约 [-1, 1]，归一化到 [0, 1]
+    return max(0.0, min(1.0, (sim + 1.0) / 2.0))
+
+try:
+    from vosk import Model, KaldiRecognizer
+    VOSK_AVAILABLE = True
+except ImportError:
+    VOSK_AVAILABLE = False
+
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+
+# 单色线性图标用内联 SVG 渲染（零体积、不依赖图标字体）。
+# QtSvg 是 PyQt5 自带模块；万一缺失就降级成纯色圆点，绝不能因此启动失败。
+try:
+    from PyQt5.QtSvg import QSvgRenderer as _QSvgRenderer
+except Exception:      # pragma: no cover
+    _QSvgRenderer = None
+
+# ------------------ Windows 键屏蔽（模考全屏锁定用）------------------
+# Python 3.14 的 ctypes.wintypes 不再保证暴露 LRESULT/WPARAM/HHOOK 等别名，
+# 这里用与平台位宽一致的基础类型自行定义，避免 AttributeError/OverflowError。
+def _wintype(name, fallback):
+    return getattr(ctypes.wintypes, name, fallback)
+
+_LRESULT = _wintype("LRESULT", ctypes.c_ssize_t)
+_WPARAM = _wintype("WPARAM", ctypes.c_size_t)
+_LPARAM = _wintype("LPARAM", ctypes.c_ssize_t)
+_HHOOK = _wintype("HHOOK", ctypes.c_void_p)
+_HINSTANCE = _wintype("HINSTANCE", ctypes.c_void_p)
+_DWORD = _wintype("DWORD", ctypes.c_uint32)
+_BOOL = _wintype("BOOL", ctypes.c_int)
+_ULONG_PTR = ctypes.c_size_t
+
+# 永久保留已卸载的 ctypes 钩子回调对象（见 WindowsKeyBlocker.uninstall 注释）
+_KEEPALIVE_HOOK_CALLBACKS = []
+
+
+class WindowsKeyBlocker:
+    """通过底层键盘钩子屏蔽系统级快捷键，仅用于模考模式锁定：
+    - 左右 Windows 键（含 Win+L）
+    - Alt 键（含 Alt+Tab / Alt+Esc / Alt+F4 / 菜单激活）
+    - Tab 键（防止焦点跳出与 Alt+Tab 切换窗口）
+    注意：钩子在安装它的线程（主线程）的消息循环中生效，屏蔽期间均不可触发，
+    考试结束/退出时必须 uninstall。"""
+    _VK_LWIN = 0x5B
+    _VK_RWIN = 0x5C
+    _VK_MENU = 0x12   # Alt
+    _VK_TAB = 0x09    # Tab
+    _WH_KEYBOARD_LL = 13
+    _BLOCK_KEYS = (_VK_LWIN, _VK_RWIN, _VK_MENU, _VK_TAB)
+
+    class KBDLLHOOKSTRUCT(ctypes.Structure):
+        _fields_ = [
+            ("vkCode", _DWORD),
+            ("scanCode", _DWORD),
+            ("flags", _DWORD),
+            ("time", _DWORD),
+            ("dwExtraInfo", ctypes.POINTER(_ULONG_PTR)),
+        ]
+
+    def __init__(self):
+        self._user32 = ctypes.windll.user32
+        # 显式声明 API 返回类型，避免 64 位下默认 c_int 截断导致 OverflowError
+        self._user32.SetWindowsHookExW.restype = _HHOOK
+        self._user32.UnhookWindowsHookEx.restype = _BOOL
+        self._user32.UnhookWindowsHookEx.argtypes = [_HHOOK]
+        self._user32.CallNextHookEx.restype = _LRESULT
+        self._user32.CallNextHookEx.argtypes = [_HHOOK, ctypes.c_int, _WPARAM, _LPARAM]
+        self._hook = None
+        self._proc = None
+
+    def _callback(self, nCode, wParam, lParam):
+        try:
+            if nCode == 0:
+                kbd = ctypes.cast(lParam, ctypes.POINTER(self.KBDLLHOOKSTRUCT)).contents
+                if kbd.vkCode in self._BLOCK_KEYS:
+                    return 1  # 拦截，阻止系统响应
+        except Exception:
+            pass
+        # hhk 参数在现代 Windows 上被忽略，传 None 避免 self._hook int 溢出
+        return self._user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+    def install(self):
+        if self._hook:
+            return
+        # 64 位下回调返回类型必须是 LRESULT（c_ssize_t），不能是 c_int
+        self._proc = ctypes.WINFUNCTYPE(
+            _LRESULT, ctypes.c_int, _WPARAM, _LPARAM
+        )(self._callback)
+        self._hook = self._user32.SetWindowsHookExW(self._WH_KEYBOARD_LL, self._proc, None, 0)
+        if not self._hook:
+            raise ctypes.WinError()
+
+    def uninstall(self):
+        if self._hook:
+            self._user32.UnhookWindowsHookEx(self._hook)
+            self._hook = None
+            # ⚠️ 不要直接让 self._proc 被 GC。ctypes 回调对象就是交给 Windows 的函数指针，
+            # 全局钩子（WH_KEYBOARD_LL）在「卸载」与「最后一次回调」之间存在竞态，
+            # 一旦回调对象被释放后 Windows 再调用它 → 跳到已释放内存 → 直接闪退（无 traceback）。
+            # 这里把引用永久留在模块级列表里，用一点点常驻内存换掉这一整类崩溃。
+            if self._proc is not None:
+                _KEEPALIVE_HOOK_CALLBACKS.append(self._proc)
+                self._proc = None
+
+# ------------------ 全局配置 ------------------
+MODEL_PATH = _resolve_model_dir("vosk-model-small-en-us-0.15")
+RECORDINGS_DIR = "recordings"
+HISTORY_DIR = "history"
+# 创意工坊「题库」下载的题目包落盘目录（与 recordings/、history/ 同级，位于程序运行目录）
+WORKSHOP_DIR = "题库下载"
+SAMPLE_RATE = 16000
+TTS_TIMEOUT = 30
+
+# 用户偏好（是否在启动时自动检查更新）；存 JSON，失败一律静默降级为默认值
+SETTINGS_FILE = "solotalk_settings.json"
+
+
+def _load_settings():
+    """读取偏好设置；文件不存在/损坏时返回 {}（调用方用默认值）。"""
+    try:
+        path = _resolve_resource_file(SETTINGS_FILE) or SETTINGS_FILE
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        print(f"[SETTINGS] 读取失败，使用默认值: {e}")
+    return {}
+
+
+def _save_settings(data):
+    """写入偏好设置（写在程序同级的可写位置）；失败静默，不影响使用。"""
+    try:
+        if getattr(sys, "frozen", False):
+            path = os.path.join(_BASE_DIR, SETTINGS_FILE)
+        else:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), SETTINGS_FILE)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"[SETTINGS] 保存失败: {e}")
+        return False
+
+# ------------------ TTS 工具（每次创建独立引擎）------------------
+# 优先使用 edge-tts（微软神经网络语音，自然、有停顿、听得清）；
+# 不可用（未安装 / 无网络）时回退 Windows 自带 SAPI5（pyttsx3）。
+try:
+    import edge_tts as _edge_tts
+    EDGE_TTS_AVAILABLE = True
+except Exception:
+    EDGE_TTS_AVAILABLE = False
+
+TTS_EDGE_VOICE = "en-US-JennyNeural"   # 英文女声，清晰自然
+TTS_EDGE_DIR = os.path.join(tempfile.gettempdir(), "solotalk_tts")  # 生成音频的缓存目录
+
+
+def tts_generate_audio(text, out_path):
+    """用 edge-tts 把文本合成 mp3 到 out_path，成功返回 True。需联网。"""
+    if not EDGE_TTS_AVAILABLE or not (text and text.strip()):
+        return False
+    try:
+        import asyncio
+        async def _gen():
+            com = _edge_tts.Communicate(text.strip(), voice=TTS_EDGE_VOICE)
+            await asyncio.wait_for(com.save(out_path), timeout=TTS_TIMEOUT)
+        asyncio.run(_gen())
+        return os.path.exists(out_path) and os.path.getsize(out_path) > 0
+    except Exception as e:
+        print(f"edge-tts 失败，回退系统语音: {e}")
+        try:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+        except Exception:
+            pass
+        return False
+
+
+def _tts_split_sentences(text):
+    """按句子边界切分，逐句合成/朗读，避免整段含糊、无停顿。"""
+    import re
+    parts = re.split(r'(?<=[.!?;:])\s+', text.strip())
+    return [p for p in parts if p.strip()]
+
+
+def tts_speak_blocking(text, stop_event=None):
+    """回退方案：Windows SAPI5（pyttsx3），优先英文语音，逐句朗读并加句间停顿。"""
+    engine = None
+    try:
+        engine = pyttsx3.init()
+        # 优先选英文语音（如果有）
+        try:
+            voices = engine.getProperty('voices')
+            for v in voices:
+                vid = str(getattr(v, 'id', '') or '')
+                if 'en' in vid.lower():
+                    engine.setProperty('voice', v.id)
+                    break
+        except Exception:
+            pass
+        engine.setProperty('rate', 140)
+        engine.setProperty('volume', 1.0)
+        if stop_event:
+            def timeout_monitor():
+                if stop_event.wait(TTS_TIMEOUT):
+                    try:
+                        engine.stop()
+                    except:
+                        pass
+            threading.Thread(target=timeout_monitor, daemon=True).start()
+        for sent in (_tts_split_sentences(text) or [text]):
+            if stop_event and stop_event.is_set():
+                break
+            engine.say(sent)
+            engine.runAndWait()
+            if stop_event and stop_event.is_set():
+                break
+            time.sleep(0.18)  # 句间停顿，让朗读更自然
+    except Exception as e:
+        print(f"TTS error: {e}")
+    finally:
+        if engine:
+            try:
+                engine.stop()
+                del engine
+            except:
+                pass
+
+# ------------------ 工具函数 ------------------
+def levenshtein_wer(ref, hyp):
+    ref_words = ref.lower().split()
+    hyp_words = hyp.lower().split()
+    n = len(ref_words)
+    if n == 0:
+        return 0.0 if len(hyp_words) == 0 else 1.0
+    dp = [[0] * (len(hyp_words) + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dp[i][0] = i
+    for j in range(len(hyp_words) + 1):
+        dp[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, len(hyp_words) + 1):
+            cost = 0 if ref_words[i - 1] == hyp_words[j - 1] else 1
+            dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    wer = dp[n][len(hyp_words)] / n
+    return wer, 1.0 - wer
+
+def jaccard_similarity(text1, text2):
+    set1 = set(text1.lower().split())
+    set2 = set(text2.lower().split())
+    if not set1 and not set2:
+        return 1.0
+    return len(set1 & set2) / len(set1 | set2)
+
+
+def _cosine01(a, b):
+    """两向量的余弦相似度，归一化到 [0, 1]（BGE 原始值约 [-1,1]，映射到 (x+1)/2）。"""
+    dot = np.dot(a, b)
+    na, nb = np.linalg.norm(a), np.linalg.norm(b)
+    if na == 0 or nb == 0:
+        return 0.0
+    return max(0.0, min(1.0, (dot / (na * nb) + 1.0) / 2.0))
+
+
+def _partC_point_scores(recognized, key_points_str, embedder):
+    """Part C 逐条要点评分（来自 _partC_semantic.md 算法）。
+
+    对每一条要点 p：
+      1. 词袋命中率 wb = 要点中去重词的命中数 / 总去重词数（识别文本里出现即命中）
+      2. 语义相似度 sem = 要点向量 vs 识别文本各滑动窗口（40 词窗、步长 20）的 cosine 最大值
+      3. 本条得分 = max(wb, sem)
+    聚合：
+      匹配度 = 各条得分的平均值
+      覆盖   = 得分 >= 0.80 的要点条数
+
+    返回 (每条得分列表, 是否使用了语义相似度)。
+    无 embedder 时 sem 取 0，退化为纯词袋命中率。
+    """
+    points = [p.strip() for p in key_points_str.split(',') if p.strip()]
+    if not points:
+        return [], False
+    if not recognized.strip():
+        return [0.0] * len(points), False
+    hyp_words = recognized.lower().split()
+    # 识别文本的滑动窗口（40 词窗、步长 20）
+    windows = []
+    for i in range(0, max(1, len(hyp_words)), 20):
+        win = ' '.join(hyp_words[i:i + 40])
+        if win.strip():
+            windows.append(win)
+    if not windows:
+        windows = [recognized.lower()]
+
+    use_sem = embedder is not None
+    win_embs = None
+    point_embs = None
+    if use_sem:
+        try:
+            win_embs = list(embedder.embed(windows))
+            point_embs = list(embedder.embed(points))
+        except Exception:
+            use_sem = False
+
+    scores = []
+    for idx, p in enumerate(points):
+        pw = [w for w in p.lower().split() if w]
+        if not pw:
+            scores.append(0.0)
+            continue
+        distinct = set(pw)
+        hit = sum(1 for w in distinct if w in hyp_words)
+        wb = hit / len(distinct)                 # 词袋命中率
+        sem = 0.0
+        if use_sem and win_embs is not None:
+            pe = point_embs[idx]
+            sims = [_cosine01(pe, we) for we in win_embs]
+            sem = max(sims) if sims else 0.0      # 语义相似度（滑动窗口最大值）
+        scores.append(max(wb, sem))              # 取较大值
+    # 字数惩罚：防止只说 1~2 词就拿高分（阈值 20 词以上才满分）
+    word_count = max(1, len(hyp_words))
+    length_penalty = min(1.0, (word_count / 20.0) ** 2)
+    if length_penalty < 1.0:
+        scores = [s * length_penalty for s in scores]
+    return scores, use_sem
+
+
+def recognize_audio_file(filepath, model):
+    if not model or not filepath or not isinstance(filepath, str) or not os.path.exists(filepath):
+        return ""
+    try:
+        wf = wave.open(filepath, 'rb')
+    except Exception:
+        return ""
+    try:
+        if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != SAMPLE_RATE:
+            return "[格式不符]"
+        rec = KaldiRecognizer(model, SAMPLE_RATE)
+        result_text = ""
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+            if rec.AcceptWaveform(data):
+                res = json.loads(rec.Result())
+                result_text += res.get("text", "") + " "
+        res = json.loads(rec.FinalResult())
+        result_text += res.get("text", "")
+        return result_text.strip()
+    except Exception:
+        return "[识别失败]"
+    finally:
+        try:
+            wf.close()
+        except Exception:
+            pass
+
+
+def _partB_slots_as_ordered(partB_raw):
+    """把 recordings.partB 统一成 (Q路径列表, A路径列表)，兼容 dict / list 两种存储。
+    - dict（当前格式）：键为 PartB_Q1…/PartB_A1…，按实际键计数；
+    - list（早期格式）：固定前 3 个为三问、其后为五答（与旧 reevaluate 行为一致）。"""
+    if isinstance(partB_raw, dict):
+        n3 = len([k for k in partB_raw if k.startswith("PartB_Q")])
+        n5 = len([k for k in partB_raw if k.startswith("PartB_A")])
+        b3 = [partB_raw.get(f"PartB_Q{i+1}") for i in range(n3)]
+        b5 = [partB_raw.get(f"PartB_A{i+1}") for i in range(n5)]
+    elif isinstance(partB_raw, list):
+        b3 = partB_raw[:3]
+        b5 = partB_raw[3:]
+    else:
+        b3, b5 = [], []
+    return b3, b5
+
+
+def evaluate_recordings(recs, pkg, model, existing_eval=None, selection=None,
+                        progress_cb=None):
+    """对一份录音（recordings 字典）做离线批改，返回 eval_result。
+    统一了「考试结束实时批改」与「历史记录重新批改」两条路径，避免逻辑分叉。
+    Part B 跳过/未录音的空槽位记 0.0 相似度，不抛异常。
+    当 BGE 嵌入模型可用时，Part B/C 使用语义余弦相似度；否则回退到 Jaccard/关键词匹配。
+
+    参数：
+      existing_eval: 历史重新批改时传入的旧评估结果，作为基础 dict，
+                     只有被选中的槽位会被重新计算，其余保留原值，避免无谓的 Vosk 识别开销。
+      selection: dict，指定要重新批改的槽位，格式：
+                 {'partA': bool,
+                  'partB_three': {0: bool, 1: bool, ...},   # 按题目序号
+                  'partB_five':  {0: bool, ...},
+                  'partC': bool}
+                 为 None 时表示「全部重新批改」（实时批改场景）。
+      progress_cb: 可选回调 progress_cb(step, total, label)，每处理一个槽位（Part/小题）前
+                   调用一次，用于后台线程上报进度（step 从 1 起，total 为本次批改总槽位数）。
+                   为 None 时退化为无进度上报。"""
+    eval_result = dict(existing_eval) if existing_eval else {}
+    _all = (selection is None)
+
+    # 槽位展开 + 进度统计（供后台批改线程上报；progress_cb=None 时退化为无进度）
+    # ⚠️ 必须在第一个 _tick() 调用之前完成，否则会 UnboundLocalError。
+    b3, b5 = _partB_slots_as_ordered(recs.get('partB', {}))
+    n3 = len(pkg.partB_three_questions)
+    n5 = len(pkg.partB_five_answers)
+    sel3 = selection.get('partB_three') if selection else None
+    sel5 = selection.get('partB_five') if selection else None
+    _prog_step = 0
+    if _all:
+        _prog_total = 1 + len(b3) + len(b5) + 1      # A + 三问 + 五答 + C
+    else:
+        _prog_total = 0
+        if selection.get('partA'):
+            _prog_total += 1
+        _prog_total += sum(1 for i in range(len(b3)) if (sel3 or {}).get(i))
+        _prog_total += sum(1 for i in range(len(b5)) if (sel5 or {}).get(i))
+        if selection.get('partC'):
+            _prog_total += 1
+    def _tick(label):
+        nonlocal _prog_step
+        _prog_step += 1
+        if progress_cb:
+            try:
+                progress_cb(_prog_step, _prog_total, label)
+            except Exception:
+                pass
+
+    # 尝试加载 BGE 嵌入模型（懒加载，仅首次调用时初始化）
+    bge = _get_bge_model()
+    if bge:
+        print("[BGE] 评分将使用 BGE 语义余弦相似度")
+    else:
+        print("[BGE] 评分将回退到 Jaccard/关键词匹配")
+
+    # ── Part A ──
+    if _all or (selection.get('partA')):
+        _tick("Part A 模仿朗读")
+        if recs.get('partA'):
+            hyp = recognize_audio_file(recs['partA'], model)
+            wer, acc = levenshtein_wer(pkg.partA_hidden_text, hyp)
+            eval_result['partA'] = {'recognized': hyp, 'wer': wer, 'accuracy': acc}
+        else:
+            eval_result['partA'] = {'recognized': '', 'wer': 1.0, 'accuracy': 0.0}
+    elif 'partA' not in eval_result:
+        eval_result['partA'] = {'recognized': '', 'wer': 1.0, 'accuracy': 0.0}
+
+    # ── Part B 三问 ──
+    old3 = eval_result.get('partB_three', [])
+    new3 = []
+    for i, rec in enumerate(b3):
+        if _all or (sel3 and sel3.get(i)):
+            _tick(f"Part B 三问 {i+1}")
+            ref = pkg.partB_three_questions[i].get('hidden_answer', '') if i < n3 else ''
+            hyp = recognize_audio_file(rec, model) if rec else ""
+            if bge and rec and ref.strip() and hyp.strip():
+                sim = _embedding_cosine_similarity(ref, hyp, bge)
+            else:
+                sim = jaccard_similarity(ref, hyp) if rec else 0.0
+            new3.append({'recognized': hyp, 'similarity': sim})
+        else:
+            new3.append(old3[i] if i < len(old3) else {'recognized': '', 'similarity': 0.0})
+    eval_result['partB_three'] = new3
+
+    # ── Part B 五答 ──
+    old5 = eval_result.get('partB_five', [])
+    new5 = []
+    for i, rec in enumerate(b5):
+        if _all or (sel5 and sel5.get(i)):
+            _tick(f"Part B 五答 {i+1}")
+            ref = pkg.partB_five_answers[i].get('hidden_answer', '') if i < n5 else ''
+            hyp = recognize_audio_file(rec, model) if rec else ""
+            if bge and rec and ref.strip() and hyp.strip():
+                sim = _embedding_cosine_similarity(ref, hyp, bge)
+            else:
+                sim = jaccard_similarity(ref, hyp) if rec else 0.0
+            new5.append({'recognized': hyp, 'similarity': sim})
+        else:
+            new5.append(old5[i] if i < len(old5) else {'recognized': '', 'similarity': 0.0})
+    eval_result['partB_five'] = new5
+
+    # ── Part C ──
+    if _all or (selection.get('partC')):
+        _tick("Part C 故事复述")
+        if recs.get('partC'):
+            hyp = recognize_audio_file(recs['partC'], model)
+            scores, use_sem = _partC_point_scores(hyp, pkg.partC_key_points, bge)
+            total = len(scores)
+            matched = sum(1 for s in scores if s >= 0.80)   # 得分 >= 0.80 的要点条数
+            matching = (sum(scores) / total) if total else 0.0
+            c_result = {
+                'recognized': hyp,
+                'coverage': f"{matched}/{total}",
+                'semantic_sim': matching,        # 匹配度 = 各条得分平均（同时作为得分依据）
+                'points': scores,
+            }
+            eval_result['partC'] = c_result
+        else:
+            eval_result['partC'] = {'recognized': '', 'coverage': '0/0', 'semantic_sim': 0.0}
+    elif 'partC' not in eval_result:
+        eval_result['partC'] = {'recognized': '', 'coverage': '0/0', 'semantic_sim': 0.0}
+
+    return eval_result
+
+
+# ------------------ 后台批改（进度环 + 进度条） ------------------
+# 批改 = Vosk 离线识别 + BGE 语义相似度，纯 CPU 且按槽位串行，单份录音常需数秒。
+# 原先同步跑会冻结 UI 且无任何反馈；改为 QThread 后台跑 + 模态进度框
+#（旋转环动画 + 步进进度条），与 QuestionBankLoader / UpdateChecker 同套线程模式。
+class GradingWorker(QThread):
+    """后台执行 evaluate_recordings，逐槽位通过 progress 信号上报进度。"""
+    progress = pyqtSignal(int, int, str)      # step, total, label
+    finished = pyqtSignal(object)             # eval_result
+    errored  = pyqtSignal(str)                # 异常信息
+
+    def __init__(self, recs, pkg, model, existing_eval=None, selection=None, parent=None):
+        super().__init__(parent)
+        self._recs = recs
+        self._pkg = pkg
+        self._model = model
+        self._existing_eval = existing_eval
+        self._selection = selection
+
+    def run(self):
+        try:
+            result = evaluate_recordings(
+                self._recs, self._pkg, self._model,
+                existing_eval=self._existing_eval, selection=self._selection,
+                progress_cb=lambda s, t, l: self.progress.emit(s, t, l))
+            self.finished.emit(result)
+        except Exception as e:  # 批改异常不能静默吞掉
+            import traceback
+            traceback.print_exc()
+            self.errored.emit(str(e))
+
+
+class _SpinnerRing(QWidget):
+    """单色线性旋转加载环（Fluent 风，无外部资源，靠 QPainter 画 300° 弧 + QTimer 旋转）。"""
+    def __init__(self, color=None, size=46, parent=None):
+        super().__init__(parent)
+        self._color = QColor(color if color is not None else D_ACCENT_DEEP)
+        self.setFixedSize(size, size)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._spin)
+
+    def start(self):
+        if not self._timer.isActive():
+            self._timer.start(16)
+
+    def stop(self):
+        self._timer.stop()
+        self.update()
+
+    def _spin(self):
+        self._angle = (self._angle + 12) % 360
+        self.update()
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.translate(self.width() / 2, self.height() / 2)
+        p.rotate(self._angle)
+        r = min(self.width(), self.height()) // 2 - 4
+        pen = QPen(self._color, 4, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.drawArc(-r, -r, 2 * r, 2 * r, 30 * 16, 300 * 16)
+        p.end()
+
+
+class GradingProgressDialog(QDialog):
+    """「离线批改中」模态进度框：旋转环动画 + 步进进度条 + 当前步骤文字。
+
+    默认不可手动关闭；仅在用户主动点「放弃批改」并经确认后，通过
+    `abandon_requested` 信号通知外部强制终止后台线程，随后 reject 退出。
+    """
+    abandon_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = True
+        self._abandoned = False
+        self.setWindowTitle("离线批改中")
+        self.setModal(True)
+        self.setFixedSize(380, 250)
+        self.setWindowFlags(self.windowFlags()
+                            & ~Qt.WindowCloseButtonHint
+                            & ~Qt.WindowContextHelpButtonHint)
+        self.setObjectName("gpRoot")
+        self.setStyleSheet(
+            f"#gpRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {D_BG_TOP}, stop:1 {D_BG_BOT}); }}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(28, 24, 28, 22)
+        root.setSpacing(18)
+
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        self._ring = _SpinnerRing()
+        top.addWidget(self._ring, 0, Qt.AlignTop)
+        rcol = QVBoxLayout()
+        rcol.setSpacing(8)
+        rcol.addWidget(_d_label("离线批改中…", 17, D_TEXT, medium=True, wrap=False))
+        self._step = _d_label("正在准备…", 13, D_SUB, wrap=True)
+        rcol.addWidget(self._step)
+        rcol.addStretch(1)
+        top.addLayout(rcol, 1)
+        root.addLayout(top)
+
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 1)
+        self._bar.setValue(0)
+        self._bar.setTextVisible(True)
+        self._bar.setFormat("%v / %m")
+        self._bar.setFixedHeight(16)
+        self._bar.setStyleSheet(
+            "QProgressBar{background:#E3ECF3;border:none;border-radius:8px;"
+            "text-align:center;color:#5A6B7B;font-size:11px;}"
+            "QProgressBar::chunk{background:%s;border-radius:8px;}" % D_ACCENT)
+        root.addWidget(self._bar)
+
+        # 放弃批改（危险样式，居中）—— 卡死时的唯一退出通道
+        self._abandon_btn = QPushButton("放弃批改")
+        self._abandon_btn.setFixedHeight(36)
+        self._abandon_btn.setCursor(Qt.PointingHandCursor)
+        self._abandon_btn.setStyleSheet(
+            "QPushButton{background:transparent;border:1px solid #E6A6A6;"
+            "border-radius:9px;color:#C0392B;font-size:13px;}"
+            "QPushButton:hover{background:#FDECEA;}"
+            "QPushButton:pressed{background:#F8D7D3;}")
+        self._abandon_btn.clicked.connect(self._ask_abandon)
+        root.addWidget(self._abandon_btn, 0, Qt.AlignHCenter)
+
+        self._ring.start()
+
+    def _ask_abandon(self):
+        box = FluentMessageDialog(
+            self, "放弃本次批改？",
+            "批改程序正在后台运行，放弃后将强制停止并退出，本次评分不会被保存。",
+            informative="已完成的批改进度会丢失，稍后可在历史记录中重新批改。",
+            icon=D_ICON_WARN,
+            buttons=(("取消", "secondary", "cancel"),
+                     ("放弃批改", "danger", "abandon")),
+            default_key="cancel")
+        box.exec_()
+        if box.clicked_key == "abandon":
+            self._abandoned = True
+            self._running = False
+            self._ring.stop()
+            self.abandon_requested.emit()
+            self.reject()
+
+    def on_progress(self, step, total, label):
+        if total > 0 and self._bar.maximum() != total:
+            self._bar.setRange(0, total)
+        self._bar.setValue(step)
+        self._step.setText(f"<span style='color:{D_SUB}'>{_esc(label)}</span>")
+        self._step.update()
+
+    def finish(self):
+        self._running = False
+        self._ring.stop()
+        self.accept()
+
+    def closeEvent(self, ev):
+        if self._running:
+            ev.ignore()
+        else:
+            super().closeEvent(ev)
+
+
+def grade_with_progress(parent, recs, pkg, vosk_model,
+                        existing_eval=None, selection=None):
+    """后台线程跑 evaluate_recordings，期间弹「批改中」进度框（旋转环 + 进度条）。
+
+    返回 eval_result；若批改过程抛异常，弹错误提示并返回 None。
+    调用方负责在拿到结果后做存历史 / 写回文件等后续动作。
+    """
+    dlg = GradingProgressDialog(parent)
+    worker = GradingWorker(recs, pkg, vosk_model,
+                          existing_eval=existing_eval, selection=selection,
+                          parent=parent)
+    _result = {}
+    _err = [None]
+
+    def _on_abandon():
+        # Vosk 的 recognize_audio_file 是阻塞式 C 调用，无法被 Python 信号 /
+        # threading.Event 中断，唯一退出手段是强制结束线程。被放弃后应用仍要
+        # 继续，故此处硬杀（可能使复用的 vosk_model 状态变脏，必要时重启程序
+        # 即可；放弃本就是极端兜底通道）。
+        worker.terminate()
+
+    dlg.abandon_requested.connect(_on_abandon)
+    worker.progress.connect(dlg.on_progress)
+    worker.finished.connect(
+        lambda ev: (_result.__setitem__('ev', ev), dlg.finish()))
+    worker.errored.connect(
+        lambda e: (_err.__setitem__(0, e), dlg.finish()))
+    worker.start()
+    dlg.exec_()
+
+    if dlg._abandoned:
+        # 用户放弃：确保后台线程已结束，返回 None（调用方按"无结果"处理）。
+        worker.terminate()
+        worker.wait(3000)
+        return None
+
+    worker.wait(5000)
+    if _err[0] is not None:
+        QMessageBox.warning(parent, "批改失败",
+                            f"批改过程出错：{_err[0]}\n录音已保存，稍后可重新批改。")
+        return None
+    return _result.get('ev')
+
+
+# ------------------ 题目包读写（.solo 与 .zip 本质都是 zip） ------------------
+def _open_package_zip(path):
+    """读取题目包（data.json + 媒体文件），返回 (data, temp_dir, base_dir)。
+
+    `.solo` 与 `.zip` 都是普通 zip 包，唯一硬性要求是里面含 `data.json`。
+    兼容两种打包方式：① data.json 在压缩包根目录（本程序导出的标准包）；
+    ② 整包被套进一层文件夹（用户用系统「压缩到 zip」压文件夹时很常见）。
+    """
+    temp_dir = tempfile.mkdtemp(prefix="solotalk_")
+    with zipfile.ZipFile(path, 'r') as zf:
+        cands = [n for n in zf.namelist()
+                 if n == 'data.json' or n.endswith('/data.json')]
+        if not cands:
+            raise ValueError("压缩包里找不到 data.json，不是有效的题目包")
+        target = min(cands, key=lambda n: n.count('/'))   # 取层级最浅的那个
+        with zf.open(target) as f:
+            data = json.load(f)
+        zf.extractall(temp_dir)
+    sub = os.path.dirname(target)
+    base_dir = os.path.join(temp_dir, sub) if sub else temp_dir
+    return data, temp_dir, base_dir
+
+
+# ------------------ 数据模型 ------------------
+class SoloPackage:
+    def __init__(self):
+        self.meta = {
+            "name": "Untitled",
+            "version": "2.4",
+            "created": datetime.datetime.now().isoformat(),
+            "author": "",
+            "anonymous": False
+        }
+        self.partA_video_path = None
+        self.partA_hidden_text = ""
+        self.partB_situation = ""
+        self.partB_listening_text = ""
+        self.partB_listening_audio = None   # 听力文本：可选音频文件（绝对路径）
+        self.partB_three_questions = []
+        self.partB_five_answers = []
+        self.partC_summary = ""
+        self.partC_keywords = ""
+        self.partC_source_type = "tts"
+        self.partC_tts_text = ""
+        self.partC_audio_path = None
+        self.partC_key_points = ""
+
+    def to_dict(self):
+        return {
+            "meta": self.meta,
+            "partA": {
+                "video": os.path.basename(self.partA_video_path) if self.partA_video_path else None,
+                "hidden_text": self.partA_hidden_text
+            },
+            "partB": {
+                "situation": self.partB_situation,
+                "listening_text": self.partB_listening_text,
+                "listening_audio": os.path.basename(self.partB_listening_audio) if self.partB_listening_audio else None,
+                "three_questions": [
+                    {**q, "en_audio": os.path.basename(q["en_audio"]) if q.get("en_audio") else None}
+                    for q in self.partB_three_questions
+                ],
+                "five_answers": [
+                    {**q, "q_audio": os.path.basename(q["q_audio"]) if q.get("q_audio") else None}
+                    for q in self.partB_five_answers
+                ]
+            },
+            "partC": {
+                "summary": self.partC_summary,
+                "keywords": self.partC_keywords,
+                "source_type": self.partC_source_type,
+                "tts_text": self.partC_tts_text,
+                "audio": os.path.basename(self.partC_audio_path) if self.partC_audio_path else None,
+                "key_points": self.partC_key_points
+            }
+        }
+
+    def from_dict(self, data, base_dir=None):
+        self.meta = data.get("meta", self.meta)
+        pa = data.get("partA", {})
+        self.partA_hidden_text = pa.get("hidden_text", "")
+        if pa.get("video") and base_dir:
+            self.partA_video_path = os.path.join(base_dir, pa["video"])
+        pb = data.get("partB", {})
+        self.partB_situation = pb.get("situation", "")
+        self.partB_listening_text = pb.get("listening_text", "")
+        if pb.get("listening_audio") and base_dir:
+            self.partB_listening_audio = os.path.join(base_dir, pb["listening_audio"])
+        self.partB_three_questions = [
+            {**q, "en_audio": os.path.join(base_dir, q["en_audio"]) if q.get("en_audio") and base_dir else q.get("en_audio")}
+            for q in pb.get("three_questions", [])
+        ]
+        self.partB_five_answers = [
+            {**q, "q_audio": os.path.join(base_dir, q["q_audio"]) if q.get("q_audio") and base_dir else q.get("q_audio")}
+            for q in pb.get("five_answers", [])
+        ]
+        pc = data.get("partC", {})
+        self.partC_summary = pc.get("summary", "")
+        self.partC_keywords = pc.get("keywords", "")
+        self.partC_source_type = pc.get("source_type", "tts")
+        self.partC_tts_text = pc.get("tts_text", "")
+        if pc.get("audio") and base_dir:
+            self.partC_audio_path = os.path.join(base_dir, pc["audio"])
+        self.partC_key_points = pc.get("key_points", "")
+
+    def keep_only_parts(self, parts):
+        """专项训练：只保留选定篇目（A/B/C）的数据，清掉未选篇目，
+        使后续解析/批改/历史都只围绕选定内容，彻底忽略未选篇目数据。"""
+        if "A" not in parts:
+            self.partA_video_path = None
+            self.partA_hidden_text = ""
+        if "B" not in parts:
+            self.partB_situation = ""
+            self.partB_listening_text = ""
+            self.partB_listening_audio = None
+            self.partB_three_questions = []
+            self.partB_five_answers = []
+        if "C" not in parts:
+            self.partC_summary = ""
+            self.partC_keywords = ""
+            self.partC_source_type = "tts"
+            self.partC_tts_text = ""
+            self.partC_audio_path = None
+            self.partC_key_points = ""
+
+class PracticeSession:
+    def __init__(self, package_name):
+        self.package_name = package_name
+        self.timestamp = datetime.datetime.now()
+        self.partA_recording = None
+        self.partB_slots = {}      # 以 "PartB_Q1" / "PartB_A1" 为键，重录时覆盖而非追加
+        self.partC_recording = None
+        self.evaluation = {}
+
+# ------------------ 主窗口 ------------------
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(f"SoloTalk {APP_VERSION} - 单机版听说模考编辑器")
+        self.setMinimumSize(1024, 700)
+
+        # 窗口图标（打包后图标可能在 _internal/ 下）
+        _icon_path = _resolve_resource_file("xixi.ico")
+        if _icon_path:
+            self.setWindowIcon(QIcon(_icon_path))
+        else:
+            print("[ICON] xixi.ico 未找到，跳过窗口图标设置")
+
+        self.current_package = SoloPackage()
+        self.current_session = None
+        # 用户偏好（目前只有「启动时自动检查更新」）
+        self.settings = _load_settings()
+
+        self.central = QStackedWidget()
+        self.setCentralWidget(self.central)
+
+        self.home_page = HomePage(self)
+        self.editor_page = EditorPage(self)
+        self.practice_page = PracticePage(self)
+        self.history_page = HistoryPage(self)
+        self.bank_page = QuestionBankPage(self)
+        self.more_page = MorePage(self)
+
+        self.central.addWidget(self.home_page)
+        self.central.addWidget(self.editor_page)
+        self.central.addWidget(self.practice_page)
+        self.central.addWidget(self.history_page)
+        self.central.addWidget(self.bank_page)
+        self.central.addWidget(self.more_page)
+        self.central.setCurrentWidget(self.home_page)
+
+        # 启动后静默检查更新（后台线程，不阻塞 UI）；仅提示，不自动下载
+        # 可在「更多 → 更新&下载地址」取消勾选「启动时自动检查更新」
+        if self.settings.get("auto_check_update", True):
+            QTimer.singleShot(1500, self._check_update)
+        else:
+            print("[UPDATE] 已按用户设置跳过启动自动检查更新")
+
+        self.show()
+
+    def set_ui_font(self, family):
+        """切换界面字体（「更多 → 个性化」调用）：立即生效 + 记住选择。
+
+        family 是 Qt 字体族名；内嵌鸿蒙用哨兵 EMBEDDED_FONT_KEY 表示。
+        """
+        try:
+            _set_ui_font_choice(family)
+        except Exception as e:
+            print(f"[FONT] 切换失败: {e}")
+            return False
+        self.settings[SETTINGS_FONT_KEY] = family
+        _save_settings(self.settings)
+        return True
+
+    def go_to(self, page):
+        # 保险：离开练习页面前，先彻底停止视频并解绑嵌入窗口。
+        # 否则承载 VLC 视频的原生窗口可能残留在其它页面之上，导致「未响应」/点击穿透。
+        try:
+            if page is not self.practice_page and self.central.currentWidget() is self.practice_page:
+                self.practice_page._stop_video()
+        except Exception:
+            pass
+        self.central.setCurrentWidget(page)
+
+    def closeEvent(self, event):
+        # 如果当前在练习页面且考试中，需确认中途退出
+        if self.central.currentWidget() == self.practice_page:
+            if not self.practice_page.request_exit():
+                event.ignore()
+                return
+        event.accept()
+
+    def _check_update(self, manual=False):
+        """后台检查更新（不自动下载/安装）。
+
+        manual=False：启动时自动检查 —— 仅「有新版」弹提示框，其余静默。
+        manual=True ：用户点「检查更新」—— 无论结果（有新版本 / 已是最新 / 检查失败）
+                      都给反馈，避免"点了没反应"。
+        """
+        if getattr(self, "_updater", None) and self._updater.isRunning():
+            # 正在检查：手动点击则记下"要提示"，等这次结果回来一起给
+            if manual:
+                self._updater_manual = True
+            return
+        self._updater_manual = bool(manual)
+        self._updater = UpdateChecker()
+        self._updater.update_available.connect(self.show_update_dialog)
+        self._updater.no_update.connect(self._on_update_none)
+        self._updater.check_failed.connect(self._on_update_failed)
+        self._updater.start()
+
+    def _on_update_none(self):
+        """检查完成：已是最新。启动自动检查时静默；手动点击时给提示。"""
+        if not getattr(self, "_updater_manual", False):
+            return
+        self._updater_manual = False
+        print("[UPDATE] 手动检查：已是最新，给出提示")
+        FluentMessageDialog(
+            self, "检查更新",
+            f"当前已是最新版本 SoloTalk {APP_VERSION}。",
+            informative="发现新版本时会提示你前往发布页手动下载。",
+            icon=D_ICON_OK, icon_color="#4CAF50",
+            buttons=(("好的", "primary", "ok"),)).exec_()
+
+    def _on_update_failed(self, msg):
+        """检查完成：无法获取更新信息。启动自动检查时静默；手动点击时给提示。"""
+        if not getattr(self, "_updater_manual", False):
+            return
+        self._updater_manual = False
+        print(f"[UPDATE] 手动检查：失败（{msg}），给出提示")
+        FluentMessageDialog(
+            self, "检查更新失败",
+            "无法获取更新信息，请检查网络后重试。",
+            informative=msg or "",
+            icon=D_ICON_WARN,
+            buttons=(("知道了", "primary", "ok"),)).exec_()
+
+    def show_update_dialog(self, info):
+        """展示「发现新版本」对话框，提供前往下载链接（外部浏览器打开）。"""
+        self._updater_manual = False   # 已有结果，清掉手动提示标志
+        print(f"[UPDATE] 弹出更新提示对话框（新版本 {info.get('version', '')}）")
+        dlg = QDialog(self)
+        dlg.setWindowTitle("发现新版本")
+        # 去掉标题栏右上角的 "?"（Qt 默认的上下文帮助按钮）
+        dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dlg.setMinimumWidth(440)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel(f"<b>发现新版本 SoloTalk {info.get('version', '')}</b>"))
+        notes = info.get("notes", "")
+        if notes:
+            tb = QTextEdit(notes)
+            tb.setReadOnly(True)
+            tb.setMaximumHeight(180)
+            layout.addWidget(tb)
+
+        def _go():
+            url = info.get("url", "")
+            if url:
+                print(f"[UPDATE] 用户点击「前往下载」，打开: {url}")
+                QDesktopServices.openUrl(QUrl(url))
+            dlg.accept()
+
+        btn_later = QPushButton("稍后提醒")
+        btn_open = QPushButton("前往下载")
+        btn_open.setStyleSheet("background:#3498db;color:white;font-weight:bold;")
+        btn_later.clicked.connect(
+            lambda: (print("[UPDATE] 用户选择「稍后提醒」"), dlg.reject())
+        )
+        btn_open.clicked.connect(_go)
+        box = QHBoxLayout()
+        box.addStretch(1)
+        box.addWidget(btn_later)
+        box.addWidget(btn_open)
+        layout.addLayout(box)
+        dlg.exec_()
+
+class _SmoothScroll(QObject):
+    """给 QAbstractScrollArea 加缓动滚动（微信 / SecRandom 那种跟手又顺滑的手感）。
+
+    ⚠️ 只接管鼠标滚轮：把它换成对滚动条的 QPropertyAnimation。
+       拖动滚动条、键盘 PgUp/PgDn、惯性触摸都不受影响。
+    ⚠️ 这个类必须在 `from PyQt5.QtCore import *` 之后定义 —— 基类 QObject 是定义期就要求值的，
+       放在文件顶部的字体工具区（Qt 导入之前）会直接 NameError。
+    """
+
+    DURATION_MS = 190     # 缓动时长（太长会显得"没反应"，190ms 仍有明显缓动）
+    PX_PER_NOTCH = 100    # 滚轮一格 100px（原生只滚 3 行≈58px，长页面要滚到手酸）
+
+    def __init__(self, area):
+        super().__init__(area)
+        self._v = area.verticalScrollBar()
+        self._h = area.horizontalScrollBar()
+        self._av = self._make_anim(self._v)
+        self._ah = self._make_anim(self._h)
+        area.viewport().installEventFilter(self)
+
+    def _make_anim(self, bar):
+        a = QPropertyAnimation(bar, b"value", self)
+        a.setEasingCurve(QEasingCurve.OutCubic)
+        a.setDuration(self.DURATION_MS)
+        return a
+
+    def _glide(self, anim, bar, delta_px):
+        """把滚动条从当前位置缓动到目标位置；返回 False 表示这条轴滚不动。"""
+        target = max(bar.minimum(), min(bar.maximum(), int(bar.value() + delta_px)))
+        if target == bar.value():
+            return False
+        # 连滚时从「当前实际位置」续接，不排队、不卡顿
+        anim.stop()
+        anim.setStartValue(bar.value())
+        anim.setEndValue(target)
+        anim.start()
+        return True
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Wheel:
+            pd, ad = ev.pixelDelta(), ev.angleDelta()
+            if pd.y() or pd.x():                 # 触摸板 / 高精度滚轮：按像素
+                dy, dx = -pd.y(), -pd.x()
+            else:                                # 普通滚轮：一格 120
+                dy = -ad.y() / 120.0 * self.PX_PER_NOTCH
+                dx = -ad.x() / 120.0 * self.PX_PER_NOTCH
+            if dy and self._glide(self._av, self._v, dy):
+                return True
+            if dx and self._glide(self._ah, self._h, dx):
+                return True
+        return super().eventFilter(obj, ev)
+
+
+def _install_smooth_scroll():
+    """给当前已存在的所有 QScrollArea 装上缓动滚动（在 MainWindow 构造完之后调用）。"""
+    n = 0
+    for w in QApplication.allWidgets():
+        if isinstance(w, QScrollArea):
+            _SmoothScroll(w)
+            n += 1
+    print(f"[UI] 已为 {n} 个滚动区域启用缓动滚动")
+    return n
+
+
+# ══════════════════ 「练习详情」对话框的 Fluent 控件工厂 ══════════════════
+# ❗ 为什么详情页必须用「真控件」而不是继续拼 HTML：
+#   QTextBrowser 的富文本引擎**完全不支持 border-radius / box-shadow**（实测：圆角色块
+#   角落像素是纯色 —— 即方角；色块上方也没有阴影渐变）。而 SecRandom / ClassIsland 那套
+#   观感的核心恰恰是"大圆角卡片"，用 HTML 拼永远拼不出圆角，只能上真 QFrame + QSS。
+#   旧的 HTML 版保留在 `_detail_html_legacy()` 里做异常兜底。
+
+D_BG_TOP, D_BG_BOT = "#F7FBFF", "#EDF6FC"      # 页面渐变（与首页同源）
+D_CARD, D_BD, D_LINE = "#FFFFFF", "#E3ECF3", "#EEF3F7"
+D_TEXT, D_SUB, D_MUTED = "#1A2B3C", "#5A6B7B", "#9AA7B4"
+# ❗表头列分隔线专用色：必须比 D_LINE(#EEF3F7) 明显。
+#   原用 D_LINE 画表头 border-right，颜色 (238,243,247) 与表头灰底 (240,240,240)
+#   几乎同亮度 → 用户完全看不到分隔线（"分隔线呢？"），也就找不到拖拽把手。
+D_DIV = "#BCCFE0"
+D_ACCENT, D_ACCENT_DEEP, D_ACCENT_SOFT = "#66CCFF", "#0A9BE0", "#E8F6FF"
+
+# 单色线性图标（24×24 描边风格，与首页同一套视觉语言；Feather 风格路径，MIT）
+D_ICON_PKG = [
+    "M16.5 9.4l-9-5.19",
+    "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73"
+    "l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+    "M3.27 6.96L12 12.01l8.73-5.05",
+    "M12 22.08V12",
+]
+D_ICON_MIC = [
+    "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z",
+    "M19 10v2a7 7 0 0 1-14 0v-2",
+    "M12 19v4",
+    "M8 23h8",
+]
+D_ICON_CHART = ["M18 20V10", "M12 20V4", "M6 20v-6"]
+D_ICON_WARN = [   # 警示三角（Feather alert-triangle）：Fluent 弹窗用
+    "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z",
+    "M12 9v4",
+    "M12 17h.01",
+]
+D_ICON_DOC = [
+    "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
+    "M14 2v6h6",
+    "M16 13H8",
+    "M16 17H8",
+    "M10 9H8",
+]
+D_ICON_OK = [   # 对勾圆环（Feather check-circle）：确认 / 已是最新 提示用
+    "M22 11.08V12a10 10 0 1 1-5.93-9.14",
+    "M22 4L12 14.01l-3-3",
+]
+
+
+def _d_label(text, size_px=13, color=D_TEXT, medium=False, bold=False,
+             wrap=True, selectable=False, parent=None):
+    """详情页通用文字：走 _bind_font 登记，用户切全局字体时会一起变。
+
+    ❗ 这里必须用 RichText + 转义，两个坑一起踩过：
+      ① **尾部空白**：题目包里 `en_question` 结尾自带 `\\n\\n`，不 strip 掉就凭空多出两行
+         空白（实测那一行从 54px 变成 88px，标题和答案之间裂开一道缝）。
+      ② **PlainText 的行高算不准**：QLabel 纯文本 + wordWrap 算出的 sizeHint/heightForWidth
+         对英文会虚高，多出来的高度被布局当成空闲分给文字 —— 整张「题目内容」卡凭空多出
+         约 360px，到处是缝隙。改成富文本后走 QTextDocument 排版，高度才准。
+      既然是富文本就必须转义（`&<>"`），并把 `\\n` 转成 `<br>`（否则换行会被折叠成空格）。
+    """
+    lb = QLabel(parent)
+    lb.setTextFormat(Qt.RichText)
+    lb.setText(f"<span style='color:{color}'>{_esc(str(text).strip())}</span>")
+    lb.setWordWrap(wrap)
+    if selectable:
+        lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    _bind_font(lb, size_px, medium=medium, bold=bold)
+    lb.setStyleSheet("background:transparent;")
+    return lb
+
+
+def _d_hline():
+    ln = QFrame()
+    ln.setObjectName("dLine")
+    ln.setFixedHeight(1)
+    ln.setStyleSheet(f"#dLine{{background:{D_LINE};border:none;}}")
+    return ln
+
+
+def _d_card(title=None, icon_paths=None):
+    """Fluent 白卡片：圆角 14 + 1px 淡描边 + 标题行 + 细分割线。返回 (卡片, 内容布局)。"""
+    f = QFrame()
+    f.setObjectName("dCard")
+    f.setStyleSheet(
+        f"#dCard{{background:{D_CARD};border:1px solid {D_BD};border-radius:14px;}}")
+    v = QVBoxLayout(f)
+    v.setContentsMargins(18, 15, 18, 17)
+    v.setSpacing(11)
+    if title:
+        hd = QHBoxLayout()
+        hd.setSpacing(8)
+        if icon_paths:
+            ic = QLabel()
+            ic.setFixedSize(18, 18)
+            ic.setStyleSheet("background:transparent;")
+            ic.setPixmap(_svg_pixmap(icon_paths, D_ACCENT_DEEP, 18))
+            hd.addWidget(ic)
+        hd.addWidget(_d_label(title, 15, D_TEXT, medium=True, wrap=False))
+        hd.addStretch(1)
+        v.addLayout(hd)
+        v.addWidget(_d_hline())
+    return f, v
+
+
+def _d_panel(bg, border, radius=10, margins=(14, 11, 14, 12), spacing=6):
+    """带底色的圆角面板（真控件，QSS 的 border-radius 在 QFrame 上是真生效的）。"""
+    f = QFrame()
+    f.setObjectName("dPanel")
+    f.setStyleSheet(
+        f"#dPanel{{background:{bg};border:1px solid {border};border-radius:{radius}px;}}")
+    v = QVBoxLayout(f)
+    v.setContentsMargins(*margins)
+    v.setSpacing(spacing)
+    return f, v
+
+
+def _d_chip(text, fit=False):
+    """小标签：浅蓝底、圆角、可选中复制。
+
+    fit=False（默认，录音文件名）/ 允许断行并填满所在列，长文件名不会撑爆列宽；
+    fit=True（头部模式徽标）/ 按内容自适应宽度、不折行 —— 否则会被布局压到
+    最小宽度（60px）后竖排换行，和右上角时间戳叠在一起。
+    """
+    lb = _d_label(text, 12, "#283593", wrap=not fit, selectable=True)
+    lb.setObjectName("dChip")
+    if fit:
+        lb.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+    else:
+        lb.setMinimumWidth(60)
+        # 文件名很长且没有空格时，允许 QLabel 在任意位置断行，避免把列撑爆
+        lb.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+    lb.setStyleSheet(
+        "#dChip{background:#F2F8FD;border:1px solid #DCE9F3;border-radius:8px;"
+        "color:#283593;padding:6px 10px;}")
+    return lb
+
+
+def _d_score_row(lab, sim, pts, pts_color, per, bar_color):
+    """三问/五答 的一行：白底 + 左侧彩色竖条。"""
+    f = QFrame()
+    f.setObjectName("dSRow")
+    f.setStyleSheet(
+        f"#dSRow{{background:#FFFFFF;border:none;border-left:4px solid {bar_color};"
+        f"border-radius:6px;}}")
+    h = QHBoxLayout(f)
+    h.setContentsMargins(12, 7, 12, 7)
+    h.setSpacing(0)
+    h.addWidget(_d_label(f"{lab} 匹配度：{sim * 100:.1f}%", 13, "#2C3E50", wrap=False))
+    h.addStretch(1)
+    h.addWidget(_d_label("得分：", 13, D_SUB, wrap=False))
+    h.addWidget(_d_label(f"{pts:.1f}", 15, pts_color, bold=True, wrap=False))
+    h.addWidget(_d_label(f"/{per}", 12, D_MUTED, wrap=False))
+    return f
+
+
+def _d_part_block(title, score, max_score, score_color, note, bg, border, title_color):
+    """左栏的「Part X 得分：n/m」小块（保留 A 蓝 / B 粉 / C 黄 的原有配色约定）。"""
+    f, v = _d_panel(bg, border, margins=(14, 11, 14, 12), spacing=4)
+    h = QHBoxLayout()
+    h.setSpacing(6)
+    h.addWidget(_d_label(title, 14, title_color, medium=True, wrap=False))
+    h.addWidget(_d_label(f"{score:.1f}", 18, score_color, bold=True, wrap=False))
+    h.addWidget(_d_label(f"/{max_score}", 13, D_SUB, wrap=False))
+    h.addStretch(1)
+    v.addLayout(h)
+    if note:
+        v.addWidget(_d_label(note, 12, D_SUB, wrap=True))
+    return f
+
+
+def _d_section(title, color, body_widget):
+    """「▍标题 + 内容块」——与 MorePage._sub() 同一套小节语言。"""
+    w = QWidget()
+    w.setStyleSheet("background:transparent;")
+    v = QVBoxLayout(w)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(7)
+    head = QLabel(f"<span style='color:{color};'>▍</span>{title}")
+    head.setTextFormat(Qt.RichText)
+    _bind_font(head, 13, medium=True)
+    head.setStyleSheet("background:transparent;")
+    v.addWidget(head)
+    v.addWidget(body_widget)
+    return w
+
+
+class FluentSelect(QPushButton):
+    """Fluent/微信 风格下拉选择：白底圆角按钮（左文右箭头）+ 点开的干净菜单。
+
+    为什么不用 QComboBox（这个坑实测过，别再回头）：
+      · QSS 一旦覆盖 `::drop-down`，Fusion 就**再也不画下拉箭头**，框右边一片空白；
+      · 不覆盖又带回原生边框，观感很脏；弹出列表更是 Windows 原生白底 + 黑框焦点块，
+        跟整体风格完全打架（用户截图里"奇奇怪怪"的就是它）。
+    自己拿 QMenu 搭反而干净可控，样式全集中在这一个类里。
+    """
+
+    changed = pyqtSignal(object)      # 参数 = 选中项的 data
+
+    CHEVRON = ["M6.5 9.75L12 15.25l5.5-5.5"]
+
+    def __init__(self, parent=None, min_width=280, height=38, font_px=14):
+        super().__init__(parent)
+        self._items = []
+        self._index = 0
+        self.setObjectName("fluentSelect")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumWidth(min_width)
+        self.setFixedHeight(height)
+        # ⚠️ padding:0px 必须写：全局 QPushButton 的 padding 会挤进内部布局
+        self.setStyleSheet(
+            "QPushButton#fluentSelect { background:#ffffff; border:1px solid #d7e0e8;"
+            " border-radius:8px; padding:0px; text-align:left; }"
+            "QPushButton#fluentSelect:hover { border:1px solid #66CCFF; }"
+            "QPushButton#fluentSelect:pressed { background:#F4FAFF; }"
+        )
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 0, 10, 0)
+        row.setSpacing(8)
+        self._label = QLabel("")
+        self._label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._label.setStyleSheet("color:#2c3e50; background:transparent;")
+        _bind_font(self._label, font_px)
+        row.addWidget(self._label, 1)
+        self._chev = QLabel()
+        self._chev.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._chev.setFixedSize(16, 16)
+        self._chev.setPixmap(_svg_pixmap(self.CHEVRON, "#8fa3b5", 16))
+        row.addWidget(self._chev, 0, Qt.AlignVCenter)
+
+        self._menu = QMenu(self)
+        # 圆角：QMenu 在 Windows 上默认画成方角 + 系统阴影边框，QSS 的 border-radius 不会生效。
+        # 必须关掉系统边框 + 开半透明背景，让 QSS 自己画那个圆角矩形（微信那种观感）。
+        self._menu.setWindowFlags(
+            self._menu.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint
+        )
+        self._menu.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._menu.setStyleSheet(
+            "QMenu { background:#ffffff; border:1px solid #e3eaf0; border-radius:10px;"
+            " padding:6px; }"
+            "QMenu::item { padding:8px 26px 8px 12px; border-radius:6px;"
+            " color:#2c3e50; font-size:14px; }"
+            "QMenu::item:selected { background:#E8F6FF; color:#0A9BE0; }"
+            "QMenu::item:checked { color:#0A9BE0; font-weight:bold; }"
+            "QMenu::indicator { width:0px; height:0px; }"   # 只要加粗高亮，不要勾选框
+        )
+        self.clicked.connect(self._open_menu)
+
+    # ---- 数据 ----
+    def addItem(self, text, data=None):
+        act = QAction(text, self._menu)
+        act.setCheckable(True)
+        act.setData(data)
+        act.triggered.connect(lambda _=False, a=act: self._on_pick(a))
+        self._menu.addAction(act)
+        self._items.append(act)
+        if len(self._items) == 1:
+            self.setCurrentIndex(0)
+        return act
+
+    def currentData(self):
+        if 0 <= self._index < len(self._items):
+            return self._items[self._index].data()
+        return None
+
+    def currentText(self):
+        if 0 <= self._index < len(self._items):
+            return self._items[self._index].text()
+        return ""
+
+    def setCurrentIndex(self, idx, emit=False):
+        """切换选中项；emit=True 时对外发 changed（构造期设初值用默认的 False）。"""
+        if not (0 <= idx < len(self._items)):
+            return
+        self._index = idx
+        for i, act in enumerate(self._items):
+            act.setChecked(i == idx)
+        self._label.setText(self._items[idx].text())
+        if emit:
+            self.changed.emit(self._items[idx].data())
+
+    def _on_pick(self, act):
+        self.setCurrentIndex(self._items.index(act), emit=True)
+
+    def _open_menu(self):
+        # 菜单贴左对齐按钮，宽度跟按钮一致，观感更像原生下拉
+        self._menu.setMinimumWidth(self.width())
+        pos = self.mapToGlobal(QPoint(0, self.height() + 4))
+        self._menu.exec_(pos)
+
+
+# ══════════════════ Fluent 风格提示 / 确认框 ══════════════════
+# ❗为什么不用 QMessageBox：它的按钮交给**系统主题**绘制 —— 灰底、方角、老式描边，
+#   和 App「天蓝渐变底 + 白色大圆角卡片 + 强调色按钮」完全不是一套语言
+#   （用户截图里那"三个灰按钮"就是它）。这里用真控件自己拼，与首页同源。
+class FluentMessageDialog(QDialog):
+    """与首页同源的 Fluent 提示/确认框：渐变底 + 单色线性图标 + 强调色圆角按钮。
+
+    用法：
+        dlg = FluentMessageDialog(
+            parent, "建议重新下载", "正文…", informative="次要说明…",
+            icon=D_ICON_WARN,
+            buttons=(("重新下载", "primary", "re"),
+                     ("无视风险，开始练习", "secondary", "ignore")))
+        dlg.exec_()
+        if dlg.clicked_key == "ignore":
+            ...
+
+    `buttons` 每项 = (按钮文字, 样式 kind, 回传 key)；kind ∈ primary / secondary / danger。
+    `clicked_key` 为 None 表示用户直接关窗（未点任何按钮）。
+    """
+
+    def __init__(self, parent, title, message, informative="", icon=None,
+                 buttons=(("确定", "primary", "ok"),), default_key="ok",
+                 min_width=440, icon_color="#E6A23C"):
+        super().__init__(parent)
+        self.clicked_key = None
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setMinimumWidth(min_width)
+        self.setObjectName("fmRoot")
+        self.setStyleSheet(
+            f"#fmRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {D_BG_TOP}, stop:1 {D_BG_BOT}); }}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 22, 24, 18)
+        root.setSpacing(0)
+
+        top = QHBoxLayout()
+        top.setSpacing(14)
+        if icon:
+            ic = QLabel()
+            ic.setFixedSize(36, 36)
+            ic.setAlignment(Qt.AlignCenter)
+            ic.setPixmap(_svg_pixmap(icon, icon_color, 30))   # 默认琥珀色警示；可传 icon_color 覆盖
+            ic.setStyleSheet("background:transparent;")
+            top.addWidget(ic, 0, Qt.AlignTop)
+        col = QVBoxLayout()
+        col.setSpacing(7)
+        col.addWidget(_d_label(title, 16, D_TEXT, medium=True, wrap=True))
+        col.addWidget(_d_label(message, 13, D_SUB, wrap=True))
+        if informative:
+            col.addWidget(_d_label(informative, 12, D_MUTED, wrap=True))
+        top.addLayout(col, 1)
+        root.addLayout(top)
+        root.addSpacing(20)
+
+        foot = QHBoxLayout()
+        foot.setSpacing(10)
+        foot.addStretch(1)
+        self._btns = {}
+        for text, kind, key in buttons:
+            b = QPushButton(text)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setFixedHeight(38)
+            b.setMinimumWidth(104)
+            _bind_font(b, 13, medium=(kind == "primary"))
+            b.setStyleSheet(self._btn_qss(kind))
+            b.clicked.connect(lambda _=False, k=key: self._choose(k))
+            foot.addWidget(b)
+            self._btns[key] = b
+        root.addLayout(foot)
+        b0 = self._btns.get(default_key)
+        if b0 is not None:
+            b0.setDefault(True)
+            b0.setFocus()
+
+    @staticmethod
+    def _btn_qss(kind):
+        """按钮样式与首页/题库页同源：主按钮=强调色实心，次按钮=白底描边，危险=红字。"""
+        if kind == "primary":
+            return (f"QPushButton {{ background:{D_ACCENT_DEEP}; border:none;"
+                    f" border-radius:10px; padding:0 22px; color:#FFFFFF;"
+                    f" font-weight:bold; }}"
+                    f"QPushButton:hover {{ background:{D_ACCENT}; }}")
+        if kind == "danger":
+            return (f"QPushButton {{ background:#FFFFFF; border:1px solid #F0D5D5;"
+                    f" border-radius:10px; padding:0 22px; color:#C0392B; }}"
+                    f"QPushButton:hover {{ background:#FDECEC; }}")
+        return (f"QPushButton {{ background:#FFFFFF; border:1px solid {D_BD};"
+                f" border-radius:10px; padding:0 22px; color:{D_SUB}; }}"
+                f"QPushButton:hover {{ background:{D_LINE}; }}")
+
+    def _choose(self, key):
+        self.clicked_key = key
+        self.accept()
+
+
+# ══════════════════ 专项训练 · 篇目选择对话框 ══════════════════
+# 与首页/详情卡片同套 Fluent 配色：天蓝主色 + 大圆角白卡 + 单色线性图标。
+# 三张可选卡片 = Part A 模仿朗读 / Part B 角色扮演 / Part C 故事复述，
+# 缺内容的篇目自动禁用并标注；至少选 1 篇才允许开始。
+_SPECIAL_PARTS = [
+    {
+        "key": "A", "phase": "partA", "letter": "A",
+        "title": "Part A 模仿朗读",
+        "desc": "观看视频并跟读，重点练语音语调节奏",
+        "color": "#E3F2FD", "color_deep": "#1565C0",
+    },
+    {
+        "key": "B", "phase": "partB", "letter": "B",
+        "title": "Part B 角色扮演",
+        "desc": "听对话后提问、听回答后作答，练听说转换",
+        "color": "#F7DCDC", "color_deep": "#a04a4a",
+    },
+    {
+        "key": "C", "phase": "partC", "letter": "C",
+        "title": "Part C 故事复述",
+        "desc": "听独白后用自己的话复述，练信息抓取与组织",
+        "color": "#FFFDE7", "color_deep": "#8a6d1f",
+    },
+]
+_SPECIAL_CHECK = ["M5 12l4 4 10-10"]   # 勾选标记
+
+
+class SpecialPartsDialog(QDialog):
+    def __init__(self, pkg, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("专项训练 · 选择篇目")
+        self.setModal(True)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setMinimumWidth(440)
+        self.setMinimumHeight(420)
+        self._cards = {}          # key -> QPushButton
+        self._checks = {}         # key -> QLabel(勾选图)
+        self._parts = []          # 题目包实际可用的篇目
+
+        self.setObjectName("spRoot")
+        self.setStyleSheet(
+            f"#spRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {D_BG_TOP}, stop:1 {D_BG_BOT}); }}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(26, 22, 26, 18)
+        root.setSpacing(0)
+
+        title = QLabel("专项训练")
+        title.setAlignment(Qt.AlignCenter)
+        _bind_font(title, 26, medium=True)
+        title.setStyleSheet(f"color:{D_TEXT}; background:transparent;")
+        sub = QLabel("只练你选的篇目 · 免试音 · 进度独立记忆")
+        sub.setAlignment(Qt.AlignCenter)
+        _bind_font(sub, 13)
+        sub.setStyleSheet(f"color:{D_SUB}; background:transparent;")
+        root.addWidget(title)
+        root.addWidget(sub)
+        root.addSpacing(18)
+
+        # 全选快捷按钮
+        bar = QHBoxLayout()
+        bar.addStretch(1)
+        btn_all = QPushButton("全选")
+        btn_none = QPushButton("清空")
+        for b, slot in ((btn_all, self._select_all), (btn_none, self._clear_all)):
+            b.setCursor(Qt.PointingHandCursor)
+            _bind_font(b, 12)
+            b.setStyleSheet(
+                f"QPushButton {{ background:white; border:1px solid {D_BD};"
+                f" border-radius:8px; padding:6px 14px; color:{D_ACCENT_DEEP}; }}"
+                f"QPushButton:hover {{ background:{D_ACCENT_SOFT}; }}")
+            b.clicked.connect(slot)
+            bar.addWidget(b)
+        root.addLayout(bar)
+        root.addSpacing(12)
+
+        body = QVBoxLayout()
+        body.setSpacing(12)
+        # 题目包各篇目可用性探测
+        avail = self._availability(pkg)
+        for p in _SPECIAL_PARTS:
+            enabled = avail[p["phase"]]
+            if enabled:
+                self._parts.append(p["key"])
+            card = self._make_card(p, enabled)
+            body.addWidget(card)
+        root.addLayout(body)
+        root.addStretch(1)
+
+        # 底部按钮行
+        foot = QHBoxLayout()
+        foot.setSpacing(10)
+        btn_cancel = QPushButton("取消")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        _bind_font(btn_cancel, 14)
+        btn_cancel.setStyleSheet(
+            f"QPushButton {{ background:white; border:1px solid {D_BD};"
+            f" border-radius:10px; padding:10px 18px; color:{D_SUB}; }}"
+            f"QPushButton:hover {{ background:{D_LINE}; }}")
+        btn_cancel.clicked.connect(self.reject)
+        self.btn_start = QPushButton("开始专项训练")
+        self.btn_start.setCursor(Qt.PointingHandCursor)
+        _bind_font(self.btn_start, 14, medium=True)
+        self.btn_start.setStyleSheet(
+            f"QPushButton {{ background:{D_ACCENT_DEEP}; border:none;"
+            f" border-radius:10px; padding:10px 18px; color:white; font-weight:bold; }}"
+            f"QPushButton:hover {{ background:{D_ACCENT}; }}"
+            f"QPushButton:disabled {{ background:{D_MUTED}; }}")
+        self.btn_start.clicked.connect(self.accept)
+        foot.addStretch(1)
+        foot.addWidget(btn_cancel)
+        foot.addWidget(self.btn_start)
+        root.addSpacing(14)
+        root.addLayout(foot)
+
+        self._refresh_start_state()
+
+    # ---- 内部 ----
+    @staticmethod
+    def _availability(pkg):
+        return {
+            "partA": bool(getattr(pkg, "partA_video_path", None)
+                          and os.path.exists(pkg.partA_video_path)),
+            "partB": bool((pkg.partB_three_questions if hasattr(pkg, "partB_three_questions") else [])
+                          or (pkg.partB_five_answers if hasattr(pkg, "partB_five_answers") else [])
+                          or (pkg.partB_listening_text if hasattr(pkg, "partB_listening_text") else "")),
+            "partC": bool((pkg.partC_tts_text if hasattr(pkg, "partC_tts_text") else "")
+                          or (pkg.partC_audio_path if hasattr(pkg, "partC_audio_path") else None)
+                          or (pkg.partC_summary if hasattr(pkg, "partC_summary") else "")),
+        }
+
+    def _make_card(self, p, enabled):
+        b = QPushButton()
+        b.setObjectName("spCard")
+        b.setCheckable(True)
+        b.setEnabled(enabled)
+        b.setFixedHeight(78)
+        b.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
+        b.setStyleSheet(
+            f"#spCard {{ background:{D_CARD}; border:1px solid {D_BD};"
+            f" border-radius:14px; padding:0px; text-align:left; }}"
+            f"#spCard:enabled:checked {{ background:{D_ACCENT_SOFT};"
+            f" border:1.5px solid {D_ACCENT_DEEP}; }}"
+            f"#spCard:disabled {{ background:#F2F5F8; border:1px dashed {D_BD}; }}"
+            f"#spCard:hover:enabled {{ border:1px solid {D_ACCENT}; }}")
+        lay = QHBoxLayout(b)
+        lay.setContentsMargins(16, 0, 16, 0)
+        lay.setSpacing(14)
+
+        badge = QLabel(p["letter"])
+        badge.setFixedSize(46, 46)
+        badge.setAlignment(Qt.AlignCenter)
+        _bind_font(badge, 22, medium=True)
+        badge.setStyleSheet(
+            f"background:{p['color']}; color:{p['color_deep']};"
+            f" border-radius:23px; padding:0px;")
+        lay.addWidget(badge)
+
+        txt = QVBoxLayout()
+        txt.setSpacing(4)
+        t = QLabel(p["title"])
+        _bind_font(t, 16, medium=True)
+        t.setStyleSheet(f"color:{D_TEXT}; background:transparent;")
+        d = QLabel(p["desc"] if enabled else p["desc"] + "（本题包暂无此篇内容）")
+        _bind_font(d, 12)
+        d.setStyleSheet(
+            f"color:{D_SUB if enabled else D_MUTED}; background:transparent;")
+        txt.addWidget(t)
+        txt.addWidget(d)
+        tw = QWidget()
+        tw.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        tw.setLayout(txt)
+        lay.addWidget(tw, 1)
+
+        check = QLabel()
+        check.setFixedSize(26, 26)
+        check.setAlignment(Qt.AlignCenter)
+        check.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        check.setPixmap(_svg_pixmap(_SPECIAL_CHECK, D_ACCENT_DEEP, 22))
+        check.setVisible(False)
+        lay.addWidget(check)
+
+        b.setProperty("key", p["key"])
+        b.toggled.connect(lambda on, k=p["key"]: self._on_toggle(k, on))
+        self._cards[p["key"]] = b
+        self._checks[p["key"]] = check
+        return b
+
+    def _on_toggle(self, key, on):
+        self._checks[key].setVisible(on)
+        self._refresh_start_state()
+
+    def _refresh_start_state(self):
+        sel = len(self.selected_parts())
+        self.btn_start.setEnabled(sel > 0)
+        self.btn_start.setText(f"开始专项训练（已选 {sel} 篇）" if sel else "开始专项训练")
+
+    def _select_all(self):
+        for k, card in self._cards.items():
+            if card.isEnabled():
+                card.setChecked(True)
+
+    def _clear_all(self):
+        for card in self._cards.values():
+            card.setChecked(False)
+
+    def selected_parts(self):
+        return [k for k, card in self._cards.items() if card.isChecked()]
+
+
+class HomePage(QWidget):
+    """首页：SecRandom 风格 —— 天蓝主色 + 2×2 宽磁贴卡 + 单色线性图标。
+
+    ⚠️ 两个 QSS/事件坑（改这个页面必须知道）：
+      1. 无选择器的样式表等价于 `*{}`，会把背景糊到所有子控件 → 一律 `#objectName` 限定；
+         另外 `QFrame{...}` 会连 `QLabel`（QLabel 继承 QFrame）一起命中。
+      2. 按钮里嵌的 QLabel 会吃掉鼠标事件，必须 `WA_TransparentForMouseEvents`，
+         否则点在图标/文字上按钮不响应。
+      3. 全局样式表给 QPushButton 设了 padding，自绘按钮必须显式 `padding:0px`。
+    """
+
+    # ---- 设计 token（改色只改这里）----
+    ACCENT      = "#66CCFF"   # SecRandom 默认主题色（天依蓝）
+    ACCENT_DEEP = "#0A9BE0"   # 图标/链接用的同色系深色，保证可读
+    ACCENT_SOFT = "#E8F6FF"   # 图标圆底 / hover 底色
+    BG_TOP      = "#F7FBFF"
+    BG_BOT      = "#EDF6FC"
+    CARD_BG     = "#FFFFFF"
+    CARD_BD     = "#E3ECF3"
+    TEXT        = "#1A2B3C"
+    TEXT_SUB    = "#7A8A9A"
+
+    # ---- 单色线性图标（24 viewBox 的 SVG path，stroke-only）----
+    ICON_PRACTICE = ["M4 15v-3a8 8 0 0 1 16 0v3", "M3.5 14.5h4v6h-4z", "M16.5 14.5h4v6h-4z"]
+    ICON_EXAM     = ["M6 3h9l4 4v14H6z", "M15 3v4h4", "M9 12h6", "M9 16h4"]
+    ICON_EDITOR   = ["M4 20l4-1 11-11a2.3 2.3 0 0 0-3.3-3.3L4.7 15.7z", "M14.5 6.6l3.3 3.3"]
+    ICON_HISTORY  = ["M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z", "M12 7.5V12l3.2 2"]
+    ICON_SPECIAL  = ["M12 3v3", "M12 18v3", "M3 12h3", "M18 12h3",
+                     "M12 12m-5.5 0a5.5 5.5 0 1 0 11 0a5.5 5.5 0 1 0-11 0"]  # 准星/靶心：专项训练
+    ICON_BANK     = ["M4 5h7v6H4z", "M13 5h7v6h-7z", "M4 13h7v6H4z", "M13 13h7v6h-7z"]  # 2×2 网格：题库/应用库
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.setObjectName("homeRoot")
+        self.setStyleSheet(
+            f"#homeRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {self.BG_TOP}, stop:1 {self.BG_BOT}); }}"
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(40, 34, 40, 24)
+        root.setSpacing(0)
+        root.addStretch(1)
+
+        center = QVBoxLayout()
+        center.setSpacing(0)
+
+        title = QLabel("SoloTalk")
+        title.setAlignment(Qt.AlignCenter)
+        _bind_font(title, 40, medium=True)
+        title.setStyleSheet(f"color:{self.TEXT}; background:transparent;")
+        subtitle = QLabel("单机版英语听说模考编辑器 · 完全免费")
+        subtitle.setAlignment(Qt.AlignCenter)
+        _bind_font(subtitle, 14)
+        subtitle.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        center.addWidget(title)
+        center.addWidget(subtitle)
+        center.addSpacing(28)
+
+        grid = QGridLayout()
+        grid.setSpacing(16)
+        tile_practice = self._tile(self.ICON_PRACTICE, "练习模式", "可跳过 / 上一步，试音也能跳过")
+        tile_practice.clicked.connect(lambda: self.load_and_start("practice"))
+        tile_exam = self._tile(self.ICON_EXAM, "模考模式", "不可跳过 / 上一步，试音不能跳过")
+        tile_exam.clicked.connect(lambda: self.load_and_start("exam"))
+        tile_editor = self._tile(self.ICON_EDITOR, "编辑模式", "制作与导入题目包（.solo / .zip）")
+        tile_editor.clicked.connect(lambda: self.main.go_to(self.main.editor_page))
+        tile_history = self._tile(self.ICON_HISTORY, "历史记录", "查看往次成绩与录音回放")
+        tile_history.clicked.connect(lambda: self.main.go_to(self.main.history_page))
+        grid.addWidget(tile_practice, 0, 0)
+        grid.addWidget(tile_exam, 0, 1)
+        grid.addWidget(tile_editor, 1, 0)
+        grid.addWidget(tile_history, 1, 1)
+        # 专项训练：通栏磁贴（占满两列），与首页同风格，但视觉上独立成行强调
+        tile_special = self._tile(self.ICON_SPECIAL, "专项训练", "任选 A / B / C 篇目组合 · 免试音 · 进度独立", wide=True)
+        tile_special.clicked.connect(lambda: self.load_and_start("special"))
+        grid.addWidget(tile_special, 2, 0, 1, 2)
+        # 题库：通栏磁贴（占满两列），进入 WakuDemo 创意工坊共享题目库（更多题目请移步 QQ 群）
+        tile_bank = self._tile(self.ICON_BANK, "题库", "创意工坊共享题目包 · 联网下载导入 · 更多请加QQ群", wide=True)
+        tile_bank.clicked.connect(lambda: self.main.go_to(self.main.bank_page))
+        grid.addWidget(tile_bank, 3, 0, 1, 2)
+
+        grid_row = QHBoxLayout()
+        grid_row.addStretch(1)
+        grid_row.addLayout(grid)
+        grid_row.addStretch(1)
+        center.addLayout(grid_row)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addLayout(center)
+        row.addStretch(1)
+        root.addLayout(row)
+        root.addStretch(1)
+
+        # 底部：左下「更多」，右下版本号
+        bottom = QHBoxLayout()
+        btn_more = QPushButton("更多")
+        btn_more.setCursor(Qt.PointingHandCursor)
+        btn_more.setToolTip("作者介绍 / 更新 / 意见反馈 / 版本信息")
+        _bind_font(btn_more, 13)
+        btn_more.setStyleSheet(
+            f"QPushButton {{ background:transparent; border:none; border-radius:6px;"
+            f" padding:8px 12px; color:{self.ACCENT_DEEP}; }}"
+            f"QPushButton:hover {{ background:{self.ACCENT_SOFT}; }}"
+        )
+        btn_more.clicked.connect(lambda: self.main.go_to(self.main.more_page))
+        bottom.addWidget(btn_more)
+        bottom.addStretch(1)
+        ver = QLabel(f"v{APP_VERSION}")
+        _bind_font(ver, 12)
+        ver.setStyleSheet(f"color:{self.TEXT_SUB};")
+        bottom.addWidget(ver)
+        root.addLayout(bottom)
+
+    # ---------------- 组件 ----------------
+    @classmethod
+    def _icon_pixmap(cls, paths, size):
+        """首页图标：统一走模块级 `_svg_pixmap`，颜色用强调色系。"""
+        return _svg_pixmap(paths, cls.ACCENT_DEEP, size)
+
+    @classmethod
+    def _tile(cls, paths, name, desc, wide=False):
+        """一张磁贴按钮（圆形图标 + 标题 + 说明）。
+        wide=True 时占满两列（专项训练通栏用），高度略矮。"""
+        b = QPushButton()
+        b.setObjectName("homeTile")
+        b.setFixedSize(676 if wide else 330, 88 if wide else 104)
+        b.setCursor(Qt.PointingHandCursor)
+        b.setStyleSheet(
+            f"#homeTile {{ background:{cls.CARD_BG}; border:1px solid {cls.CARD_BD};"
+            f" border-radius:14px; padding:0px; text-align:left; }}"
+            f"#homeTile:hover {{ background:#FAFEFF; border:1px solid {cls.ACCENT}; }}"
+            f"#homeTile:pressed {{ background:{cls.ACCENT_SOFT}; }}"
+        )
+        lay = QHBoxLayout(b)
+        lay.setContentsMargins(18, 0, 18, 0)
+        lay.setSpacing(14)
+
+        ic = QLabel()
+        ic.setObjectName("homeIconBox")
+        ic.setFixedSize(40, 40)
+        ic.setAlignment(Qt.AlignCenter)
+        ic.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        ic.setStyleSheet(
+            f"#homeIconBox {{ background:{cls.ACCENT_SOFT}; border-radius:20px; border:none; }}"
+        )
+        ic.setPixmap(cls._icon_pixmap(paths, 22))
+        lay.addWidget(ic)
+
+        txt = QVBoxLayout()
+        txt.setSpacing(3)
+        # ⚠️ 上下都要加 stretch：QLabel 默认垂直策略是 Preferred（可伸长），
+        # 不夹住的话 QVBoxLayout 会把多余高度分给两个 label，文字各自顶到框顶端，
+        # 于是标题和说明之间拉出一道很显眼的空行（用户截图里圈出来的就是这个）。
+        txt.addStretch(1)
+        t = QLabel(name)
+        _bind_font(t, 16, medium=True)      # 内部已 setFont，别在外面再套一层
+        t.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        t.setStyleSheet(f"color:{cls.TEXT}; background:transparent;")
+        d = QLabel(desc)
+        _bind_font(d, 12)
+        d.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        d.setStyleSheet(f"color:{cls.TEXT_SUB}; background:transparent;")
+        txt.addWidget(t)
+        txt.addWidget(d)
+        txt.addStretch(1)
+        tw = QWidget()
+        tw.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        tw.setLayout(txt)
+        lay.addWidget(tw, 1)
+        return b
+
+    def load_and_start(self, mode):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择题目包", "",
+            "全部题目包 (*.solo *.zip);;SoloTalk 题目包 (*.solo);;ZIP 压缩包 (*.zip)")
+        if not path:
+            return
+        try:
+            data, temp_dir, base_dir = _open_package_zip(path)
+            self.main.current_package.from_dict(data, base_dir=base_dir)
+            self.main.current_package.meta['temp_dir'] = temp_dir
+            # 专项训练：先让用户选篇目，再按选定篇目裁剪题目包数据
+            if mode == "special":
+                dlg = SpecialPartsDialog(self.main.current_package, self)
+                if dlg.exec_() != QDialog.Accepted:
+                    return
+                parts = dlg.selected_parts()
+                if not parts:
+                    return
+                self.main.current_package.keep_only_parts(parts)
+            # 先把题目包交给练习页，确保进度文件路径能取到正确的包名
+            self.main.practice_page.pkg = self.main.current_package
+            self.main.practice_page.set_mode(mode, parts if mode == "special" else None)
+            self.main.go_to(self.main.practice_page)
+            # 进入后先检查该模式 + 该题包是否有“一半”的进度，再让用户选择继续或重新开始
+            self.main.practice_page._check_and_prompt_progress()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载失败：{str(e)}")
+
+# ------------------ 更多（左侧导航 + 右侧单栏内容） ------------------
+class MorePage(QWidget):
+    """首页左下角「更多」入口对应的页面。
+
+    布局参考常见设置页：左侧导航列出各板块，右侧**只显示当前选中的那一项**，
+    右上角提供「返回主页」。避免所有内容堆在一页里。
+    """
+
+    # 外链集中在此，日后改地址只改这一处
+    REPO_URL = "https://github.com/FallingLighty/SoloTalk"
+    RELEASES_URL = "https://github.com/FallingLighty/SoloTalk/releases"
+    BILIBILI_URL = "https://space.bilibili.com/1667914290"
+    QQ_JOIN_URL = "https://qm.qq.com/q/o4Yfw2jsDm"
+    DOWNLOAD_URL = "https://github.com/FallingLighty/SoloTalk/releases/latest"
+    LABEL_W = 96   # 「下载地址：」这类行标签的固定宽度（保证冒号对齐）
+    QQ_GROUP_NO = "1091799764"
+    QR_FILENAME = "qq_group_qr.jpg"
+    ICON_FILENAME = "xixi.ico"
+
+    NAV_ITEMS = [
+        ("🎨", "个性化"),
+        ("ℹ️", "关于"),
+        ("⬆️", "更新&下载地址"),
+        ("💬", "意见反馈"),
+        ("📌", "使用须知&声明"),
+    ]
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ---------- 左侧：导航栏 + 底部版本信息 ----------
+        left = QFrame()
+        left.setObjectName("moreSide")
+        left.setFixedWidth(188)
+        left.setStyleSheet(
+            "QFrame#moreSide { background:#f7f9fb; border:none;"
+            " border-right:1px solid #e6ebef; }"
+        )
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.setSpacing(0)
+
+        self.nav = QListWidget()
+        self.nav.setFrameShape(QFrame.NoFrame)
+        self.nav.setStyleSheet(
+            "QListWidget { background:transparent; border:none; outline:none; padding:10px 0; }"
+            "QListWidget::item { height:44px; margin:2px 10px; border-radius:8px;"
+            " color:#55606b; font-size:14px; }"
+            "QListWidget::item:hover { background:#edf1f4; }"
+            "QListWidget::item:selected { background:#e4eff9; color:#1f6fb2; }"
+        )
+        for icon, name in self.NAV_ITEMS:
+            item = QListWidgetItem(f"  {icon}    {name}")
+            item.setSizeHint(QSize(0, 44))
+            self.nav.addItem(item)
+        self.nav.currentRowChanged.connect(self._on_nav)
+        lv.addWidget(self.nav, 1)
+
+        # 底部分隔线 + 「返回主页」按钮（左下角，不再放右上角）
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background:#e6ebef;")
+        sep_row = QHBoxLayout()
+        sep_row.setContentsMargins(18, 0, 18, 0)
+        sep_row.addWidget(sep)
+        lv.addLayout(sep_row)
+
+        foot = QWidget()
+        fv = QVBoxLayout(foot)
+        fv.setContentsMargins(18, 12, 18, 16)
+        fv.setSpacing(0)
+        btn_back = QPushButton("返回主页")
+        btn_back.setCursor(Qt.PointingHandCursor)
+        btn_back.setStyleSheet(
+            "QPushButton { font-size:13px; padding:7px 0; border:1px solid #cfd8dc;"
+            " border-radius:8px; background:white; color:#55606b; }"
+            "QPushButton:hover { background:#f4f7f9; color:#2c3e50; }"
+        )
+        btn_back.clicked.connect(lambda: self.main.go_to(self.main.home_page))
+        fv.addWidget(btn_back)
+        lv.addWidget(foot)
+
+        root.addWidget(left)
+
+        # ---------- 右侧：内容栈（返回按钮已移到左下角） ----------
+        right = QWidget()
+        rv = QVBoxLayout(right)
+        rv.setContentsMargins(26, 22, 26, 20)
+        rv.setSpacing(10)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._scroll(self._page_personalize()))
+        self.stack.addWidget(self._scroll(self._page_about()))
+        self.stack.addWidget(self._scroll(self._page_update()))
+        self.stack.addWidget(self._scroll(self._page_feedback()))
+        self.stack.addWidget(self._scroll(self._page_terms()))
+        rv.addWidget(self.stack, 1)
+        root.addWidget(right, 1)
+
+        self.nav.setCurrentRow(0)
+        self.setLayout(root)
+
+    def _on_nav(self, row):
+        """侧栏切换 → 右侧只显示对应板块。"""
+        if 0 <= row < self.stack.count():
+            self.stack.setCurrentIndex(row)
+
+    # ---------- 通用小组件 ----------
+    def _page(self):
+        """返回 (容器控件, 垂直布局)；内容顶部对齐。"""
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(2, 2, 2, 2)
+        v.setSpacing(12)
+        v.setAlignment(Qt.AlignTop)
+        return w, v
+
+    def _scroll(self, inner):
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QFrame.NoFrame)
+        # ❗统一右侧内容区背景：滚动区与其视口一律透明 → 露出主窗口背景(#f5f6fa)，
+        #   消除「视口默认灰 #efefef」与「rv 的 26px 外边距 #f5f6fa」之间那道竖向色差。
+        sc.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        sc.viewport().setAutoFillBackground(False)
+        sc.viewport().setStyleSheet("background: transparent;")
+        sc.setWidget(inner)
+        return sc
+
+    def _heading(self, text, size=20):
+        lb = QLabel(text)
+        lb.setStyleSheet(f"font-size:{size}px; font-weight:bold; color:#2c3e50;")
+        return lb
+
+    def _sub(self, text, size=20):
+        """小节标题（带左侧强调竖线），用于长文分块。
+
+        字号与页面大标题一致（20px 加粗）——原来还有一级更大的页面标题压在上面，
+        删掉之后小节就是最高层，所以统一到同一字号，各小节之间不再有大小差别。
+        """
+        lb = QLabel(f"<span style='color:#3498db;'>▍</span>{text}")
+        lb.setWordWrap(True)
+        lb.setTextFormat(Qt.RichText)
+        lb.setStyleSheet(f"font-size:{size}px; font-weight:bold; color:#2c3e50;")
+        return lb
+
+    def _para(self, text, size=14, color="#4a5560"):
+        lb = QLabel(text)
+        lb.setWordWrap(True)
+        lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lb.setStyleSheet(f"font-size:{size}px; color:{color};")
+        return lb
+
+    def _primary_btn(self, label, slot):
+        btn = QPushButton(label)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton { font-size:14px; padding:8px 22px; border:none; border-radius:8px;"
+            " background:#3498db; color:white; font-weight:bold; }"
+            "QPushButton:hover { background:#2980b9; }"
+        )
+        btn.clicked.connect(slot)
+        return btn
+
+    def _link_row(self, links, center=False):
+        """一行「A · B · C」样式的文字链接。"""
+        row = QHBoxLayout()
+        row.setSpacing(4)
+        if center:
+            row.addStretch(1)
+        for i, (label, url) in enumerate(links):
+            if i:
+                sep = QLabel("·")
+                sep.setStyleSheet("color:#b8c2cc; font-size:14px;")
+                row.addWidget(sep)
+            btn = QPushButton(label)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFlat(True)
+            btn.setStyleSheet(
+                "QPushButton { border:none; background:transparent; color:#3498db;"
+                " font-size:14px; padding:2px 6px; }"
+                "QPushButton:hover { color:#2980b9; }"
+            )
+            btn.clicked.connect(lambda _=False, u=url: QDesktopServices.openUrl(QUrl(u)))
+            row.addWidget(btn)
+        if center:
+            row.addStretch(1)
+        return row
+
+    def _info_value(self, value):
+        """只读输入框：内容可选中复制，样式跟页面一致（无焦点框抢眼）。"""
+        ed = QLineEdit(value)
+        ed.setReadOnly(True)
+        ed.setCursorPosition(0)
+        ed.setStyleSheet(
+            "QLineEdit { font-size:13px; color:#4a5560; background:#ffffff;"
+            " border:1px solid #dfe5ea; border-radius:6px; padding:5px 10px;"
+            " selection-background-color:#cfe6f7; selection-color:#2c3e50; }"
+        )
+        return ed
+
+    def _secondary_btn(self, label, slot):
+        """白底描边次要按钮（点击率高时用 _primary_btn）。"""
+        btn = QPushButton(label)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton { font-size:13px; padding:5px 16px; border:1px solid #cfd8dc;"
+            " border-radius:6px; background:white; color:#55606b; }"
+            "QPushButton:hover { background:#f4f7f9; color:#2c3e50; }"
+        )
+        if slot is not None:
+            btn.clicked.connect(slot)
+        return btn
+
+    def _info_row(self, label, value=None, btn_label=None, slot=None,
+                  box_width=None, stretch_box=False, primary_btn=False):
+        """一行「标签：+ 只读内容框 / 按钮」。
+
+        value      → 只读输入框（可选中复制）
+        btn_label  → 按钮，primary_btn=True 时与「检查更新」同款（蓝色主按钮）
+        两者可同时给：先内容框、再按钮。
+        """
+        row = QHBoxLayout()
+        row.setSpacing(10)
+
+        lb = QLabel(label)
+        lb.setFixedWidth(self.LABEL_W)
+        lb.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        lb.setStyleSheet("font-size:14px; color:#55606b;")
+        row.addWidget(lb)
+
+        if value is not None:
+            ed = self._info_value(value)
+            if box_width:
+                ed.setFixedWidth(box_width)
+            row.addWidget(ed, 1 if stretch_box else 0)
+
+        if btn_label is not None:
+            if primary_btn:
+                row.addWidget(self._primary_btn(btn_label, slot))
+            else:
+                row.addWidget(self._secondary_btn(btn_label, slot))
+
+        if not stretch_box:
+            row.addStretch(1)
+        return row
+
+    # ---------- 各板块 ----------
+    # ---------- 个性化 ----------
+    def _page_personalize(self):
+        """个性化设置：目前提供界面字体切换（立即生效 + 记住选择）。"""
+        w, v = self._page()
+
+        v.addWidget(self._sub("界面字体"))
+        v.addWidget(self._para(
+            "换一个你看着舒服的字体，改动立即生效，并会记到下次启动。", 13, "#6b7785"))
+
+        card = QFrame()
+        card.setObjectName("pfCard")
+        card.setStyleSheet(
+            "#pfCard { background:#ffffff; border:1px solid #e6ebef; border-radius:10px; }"
+        )
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(20, 18, 20, 18)
+        cv.setSpacing(12)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        lb = QLabel("字体")
+        lb.setStyleSheet("font-size:14px; color:#2c3e50;")
+        lb.setFixedWidth(self.LABEL_W)
+        row.addWidget(lb)
+
+        self.cmb_font = FluentSelect(min_width=300)
+        cur = _UI_FONT.get("choice")
+        sel = 0
+        for i, (label, fam) in enumerate(_available_font_choices()):
+            self.cmb_font.addItem(label, fam)
+            if fam == cur:
+                sel = i
+        self.cmb_font.setCurrentIndex(sel)
+        # 先设好当前项再接信号，避免构造期就触发一次保存
+        self.cmb_font.changed.connect(self._on_font_changed)
+        row.addWidget(self.cmb_font)
+        row.addStretch(1)
+        cv.addLayout(row)
+
+        pv = QLabel("预览")
+        pv.setStyleSheet("font-size:13px; color:#6b7785;")
+        cv.addWidget(pv)
+
+        prev = QFrame()
+        prev.setObjectName("pfPrev")
+        prev.setStyleSheet(
+            "#pfPrev { background:#f7f9fb; border:1px solid #eaf0f4; border-radius:8px; }"
+        )
+        pvv = QVBoxLayout(prev)
+        pvv.setContentsMargins(16, 14, 16, 14)
+        pvv.setSpacing(6)
+        for text, size_px, medium, color in (
+            ("SoloTalk 英语听说模考", 20, True, "#1a2b3c"),
+            ("Part A Reading Aloud　模仿朗读", 14, False, "#2c3e50"),
+            ("单机版英语听说模考编辑器 · 断网可用", 12, False, "#7a8a9a"),
+        ):
+            lb2 = QLabel(text)
+            _bind_font(lb2, size_px, medium=medium)
+            lb2.setStyleSheet(f"color:{color}; background:transparent;")
+            pvv.addWidget(lb2)
+        cv.addWidget(prev)
+
+        v.addWidget(card)
+        return w
+
+    def _on_font_changed(self, fam):
+        """字体下拉变更 → 立即应用 + 保存（失败时只打日志，不打断用户）。"""
+        if not self.main.set_ui_font(fam):
+            print("[FONT] ⚠️ 切换失败，字体保持原样")
+
+    def _page_about(self):
+        w, v = self._page()
+
+        icon_lb = QLabel()
+        icon_lb.setAlignment(Qt.AlignCenter)
+        _icon = _resolve_resource_file(self.ICON_FILENAME)
+        if _icon:
+            _pix = QIcon(_icon).pixmap(96, 96)
+            if not _pix.isNull():
+                icon_lb.setPixmap(_pix)
+        v.addWidget(icon_lb)
+
+        name = QLabel("SoloTalk")
+        name.setAlignment(Qt.AlignCenter)
+        name.setStyleSheet("font-size:26px; font-weight:bold; color:#2c3e50;")
+        v.addWidget(name)
+
+        ver = QLabel(f"v{APP_VERSION}")
+        ver.setAlignment(Qt.AlignCenter)
+        ver.setFixedWidth(66)
+        ver.setStyleSheet(
+            "font-size:13px; color:#55606b; background:#eef2f5;"
+            " border-radius:11px; padding:4px 0;"
+        )
+        ver_row = QHBoxLayout()
+        ver_row.addStretch(1)
+        ver_row.addWidget(ver)
+        ver_row.addStretch(1)
+        v.addLayout(ver_row)
+
+        desc = QLabel("单机版英语听说模考编辑器 · 完全免费 · 开源")
+        desc.setAlignment(Qt.AlignCenter)
+        desc.setStyleSheet("font-size:14px; color:#7f8c8d;")
+        v.addWidget(desc)
+
+        v.addLayout(self._link_row([
+            ("源码仓库", self.REPO_URL),
+            ("哔哩哔哩主页", self.BILIBILI_URL),
+            ("Github 发布页", self.RELEASES_URL),
+        ], center=True))
+
+        v.addSpacing(4)
+        v.addWidget(self._para("作者：晖落然（FallingLighty）、cheng、咸鱼", size=14))
+        v.addWidget(self._para(
+            "一款自制、免费、非商用、开源的英语听说软件，"
+            "可在没有 E 听说 E 卡的情况下提前体验高考听说考试流程。",
+            size=13, color="#7f8c8d"))
+
+        v.addStretch(1)
+        return w
+
+    def _page_update(self):
+        w, v = self._page()
+        v.addWidget(self._heading("版本更新"))
+        v.addWidget(self._para("仅提示新版本，不自动下载或替换；需要时前往发布页手动下载。",
+                               size=13, color="#7f8c8d"))
+
+        # 平铺文字，不加卡片外框
+        v.addWidget(self._para(f"当前版本：SoloTalk {APP_VERSION}", size=15))
+        v.addWidget(self._para(
+            f"运行平台：{'手机 / 安卓' if CHANNEL == 'mobile' else '电脑（Windows）'}", size=15))
+        v.addWidget(self._para(
+            "运行模式：模考（不可跳过 / 不可返回） / 练习（可跳过、可返回）", size=15))
+
+        # 检查更新（手动）+ 启动时是否自动检查
+        row = QHBoxLayout()
+        row.setSpacing(14)
+        row.addWidget(self._primary_btn(
+            "检查更新", lambda: self.main._check_update(manual=True)))
+        self.chk_auto_update = QCheckBox("启动时自动检查更新")
+        self.chk_auto_update.setCursor(Qt.PointingHandCursor)
+        self.chk_auto_update.setChecked(bool(self.main.settings.get("auto_check_update", True)))
+        self.chk_auto_update.setStyleSheet("QCheckBox { font-size:13px; color:#55606b; }")
+        self.chk_auto_update.toggled.connect(self._on_auto_update_toggled)
+        row.addWidget(self.chk_auto_update)
+        row.addStretch(1)
+        v.addLayout(row)
+
+        # ---- 下载地址：两种获取方式（进 QQ 群 / 发布页） ----
+        v.addSpacing(10)
+        v.addWidget(self._heading("下载地址"))
+        v.addLayout(self._info_row(
+            "QQ群：",
+            btn_label=f"点击加入群聊(QQ：{self.QQ_GROUP_NO})",
+            slot=lambda: QDesktopServices.openUrl(QUrl(self.QQ_JOIN_URL)),
+            primary_btn=True))
+        v.addLayout(self._info_row(
+            "发布页：",
+            btn_label="前往发布页",
+            slot=lambda: QDesktopServices.openUrl(QUrl(self.RELEASES_URL)),
+            primary_btn=True))
+
+        v.addStretch(1)
+        return w
+
+    def _page_feedback(self):
+        w, v = self._page()
+        v.addWidget(self._heading("意见反馈"))
+        v.addWidget(self._para("使用中遇到问题、或想提功能建议，欢迎进 QQ 群反馈。",
+                               size=13, color="#7f8c8d"))
+
+        v.addWidget(self._para("QQ 群：SoloTalkの创意工坊", size=15))
+        v.addWidget(self._para(f"群号：{self.QQ_GROUP_NO}", size=15, color="#7f8c8d"))
+        _join_row = QHBoxLayout()
+        _join_row.addWidget(self._primary_btn(
+            "点击加入群聊", lambda: QDesktopServices.openUrl(QUrl(self.QQ_JOIN_URL))))
+        _join_row.addStretch(1)
+        v.addLayout(_join_row)
+
+        qr_row = QHBoxLayout()
+        qr_row.addStretch(1)
+        _qr = _resolve_resource_file(self.QR_FILENAME)
+        if _qr:
+            _qrpix = QPixmap(_qr)
+            if not _qrpix.isNull():
+                pic = QLabel()
+                pic.setPixmap(_qrpix.scaledToWidth(210, Qt.SmoothTransformation))
+                qr_row.addWidget(pic)
+        else:
+            print(f"[MORE] 二维码资源未找到：{self.QR_FILENAME}（跳过显示，不影响其它内容）")
+        qr_row.addStretch(1)
+        v.addLayout(qr_row)
+
+        cap = QLabel(f"扫一扫，加入 QQ 交流群（群号 {self.QQ_GROUP_NO}）")
+        cap.setAlignment(Qt.AlignCenter)
+        cap.setStyleSheet("color:#95a5a6; font-size:13px;")
+        v.addWidget(cap)
+
+        v.addStretch(1)
+        return w
+
+    def _on_auto_update_toggled(self, checked):
+        """记住「启动时自动检查更新」的选择。"""
+        self.main.settings["auto_check_update"] = bool(checked)
+        _save_settings(self.main.settings)
+        print(f"[SETTINGS] 启动时自动检查更新 = {bool(checked)}")
+
+    def _page_terms(self):
+        """适用人群 / 使用须知 / 免责声明 三块合并在一页（侧栏只占一项）。
+
+        没有页面级大标题——侧栏「使用须知&声明」已经说明了本页主题，
+        正文直接由各小节标题（带左侧竖线）分段，层次更清楚。
+        """
+        w, v = self._page()
+
+        # ---- 联网说明（原来在「更新&下载地址」页，移到这里） ----
+        v.addWidget(self._sub("联网说明"))
+        v.addWidget(self._para(
+            "录音识别与批改全部在本地完成，断网也能完整考完；"
+            "联网时会自动启用更自然的在线朗读语音，并在启动时检查一次新版本"
+            "（可在「更新&下载地址」里关闭）。",
+            size=14))
+
+        # ---- 适用人群 ----
+        v.addWidget(self._sub("适用人群"))
+        for line in [
+            "1、想提前体验高考听说，但学校还未购买 E 听说 E 卡的学生",
+            "2、学校未强制，且用不上 E 听说复杂功能的学生",
+            "3、真的买不起 E 听说 E 卡的学生",
+        ]:
+            v.addWidget(self._para(line, size=14))
+        v.addWidget(self._para(
+            "注：本软件面向刚上高中、学校尚未统一购买 E 听说 E 卡的学生，"
+            "用于提前体验题型；不适合用于高三备考。",
+            size=13, color="#7f8c8d"))
+
+        # ---- 使用须知 ----
+        v.addSpacing(10)
+        v.addWidget(self._sub("使用须知"))
+        for line in [
+            "1、为保障题目原创权，题目署名一经保存不可更改，请慎重",
+            "2、Part C 要点请用英文逗号隔开，否则无法识别",
+            "3、手机版批改与历史记录功能尚不稳定，可能无法批改与回放录音，请做好预期",
+            "4、Part A 上传的视频需附带字幕",
+            "5、若手机麦克风无法识别，请自行在设置中开启软件麦克风使用权限",
+            "6、电脑版使用时不要关闭黑色弹窗",
+        ]:
+            v.addWidget(self._para(line, size=14))
+
+        # ---- 免责声明 ----
+        v.addSpacing(10)
+        v.addWidget(self._sub("免责声明"))
+        blocks = [
+            ("关于批改准确度",
+             "有人认为该软件不够科学、甚至可能误人子弟。的确，软件制作匆忙、又没有充足的数据，"
+             "批改可能存在不够准确的问题，但是还是可以参考的，体验一下流程。（可能A偏低，B偏高）"),
+            ("关于适用人群",
+             "因此本软件的使用人群可能限于刚上高中、学校还没购买会员、想体验一下高中题型的学生，"
+             "不适合用于高三备考。这一点此前没有在视频里明说，在此向各位表示抱歉。"),
+            ("关于题库",
+             "很感谢大家的支持。目前确实存在题目不足的问题，因为我们确实做不到 E 听说那样丰富的题库（但其实现在的数量已经可以了），"
+             "需要大家的共同创作——这也是QQ群建立的初衷。愿未来会有更加丰富的题库！"),
+            ("关于软件&试题",
+             "操作指南，软件和题目在群文件下载。"),
+            ("关于软件更新和问题",
+             "软件可能还有很多 bug，但 up 主本人就是一个即将上高三、也要考听说的学生，"
+             "能挤出时间完成这个软件已实属不易。我知道这有卖惨的嫌疑，但仍望大家见谅吧。"),
+        ]
+        for title, body in blocks:
+            v.addWidget(self._para(f"· {title}", size=14, color="#34495e"))
+            v.addWidget(self._para(body, size=14))
+            v.addSpacing(4)
+
+        v.addStretch(1)
+        return w
+
+
+# ------------------ 编辑模式 ------------------
+class EditorPage(QWidget):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.pkg = self.main.current_package
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        top_bar = QHBoxLayout()
+        self.name_edit = QLineEdit(self.pkg.meta.get("name", ""))
+        self.name_edit.setPlaceholderText("题目包名称")
+        self.author_edit = QLineEdit(self.pkg.meta.get("author", ""))
+        self.author_edit.setPlaceholderText("题目作者（可选匿名）")
+        self.anonymous_check = QCheckBox("匿名")
+        self.anonymous_check.setChecked(self.pkg.meta.get("anonymous", False))
+        if self.pkg.meta.get("author"):
+            self.author_edit.setReadOnly(True)
+            self.anonymous_check.setEnabled(False)
+        btn_new = QPushButton("新建")
+        btn_open = QPushButton("打开题目包")
+        btn_save = QPushButton("保存")
+        btn_back = QPushButton("返回主页")
+        top_bar.addWidget(QLabel("名称："))
+        top_bar.addWidget(self.name_edit)
+        top_bar.addWidget(QLabel("作者："))
+        top_bar.addWidget(self.author_edit)
+        top_bar.addWidget(self.anonymous_check)
+        top_bar.addWidget(btn_new)
+        top_bar.addWidget(btn_open)
+        top_bar.addWidget(btn_save)
+        top_bar.addStretch()
+        top_bar.addWidget(btn_back)
+        btn_new.clicked.connect(self.new_package)
+        btn_open.clicked.connect(self.open_package)
+        btn_save.clicked.connect(self.save_package)
+        btn_back.clicked.connect(lambda: self.main.go_to(self.main.home_page))
+        layout.addLayout(top_bar)
+
+        self.tabs = QTabWidget()
+        self.partA_widget = PartAEditor(self.pkg)
+        self.partB_widget = PartBEditor(self.pkg)
+        self.partC_widget = PartCEditor(self.pkg)
+        self.tabs.addTab(self.partA_widget, "Part A 模仿朗读")
+        self.tabs.addTab(self.partB_widget, "Part B 角色扮演")
+        self.tabs.addTab(self.partC_widget, "Part C 故事复述")
+        layout.addWidget(self.tabs)
+        self.setLayout(layout)
+
+    def new_package(self):
+        self.main.current_package = SoloPackage()
+        self.pkg = self.main.current_package
+        self.name_edit.setText("")
+        self.author_edit.setText("")
+        self.anonymous_check.setChecked(False)
+        self.author_edit.setReadOnly(False)
+        self.anonymous_check.setEnabled(True)
+        self.partA_widget.pkg = self.pkg
+        self.partB_widget.pkg = self.pkg
+        self.partC_widget.pkg = self.pkg
+        self.partA_widget.refresh()
+        self.partB_widget.refresh()
+        self.partC_widget.refresh()
+
+    def open_package(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "打开题目包", "",
+            "全部题目包 (*.solo *.zip);;SoloTalk 题目包 (*.solo);;ZIP 压缩包 (*.zip)")
+        if path:
+            try:
+                data, temp_dir, base_dir = _open_package_zip(path)
+                self.pkg.from_dict(data, base_dir=base_dir)
+                self.pkg.meta['temp_dir'] = temp_dir
+                self.name_edit.setText(self.pkg.meta.get("name", ""))
+                self.author_edit.setText(self.pkg.meta.get("author", ""))
+                self.anonymous_check.setChecked(self.pkg.meta.get("anonymous", False))
+                if self.pkg.meta.get("author"):
+                    self.author_edit.setReadOnly(True)
+                    self.anonymous_check.setEnabled(False)
+                else:
+                    self.author_edit.setReadOnly(False)
+                    self.anonymous_check.setEnabled(True)
+                self.partA_widget.refresh()
+                self.partB_widget.refresh()
+                self.partC_widget.refresh()
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"打开失败：{str(e)}")
+
+    def save_package(self):
+        # ❗保存类型分两条、.solo 在前：第一条决定"用户没写扩展名时自动补的后缀" → 默认存 .solo
+        path, _ = QFileDialog.getSaveFileName(
+            self, "保存题目包", "",
+            "SoloTalk 题目包 (*.solo);;ZIP 压缩包 (*.zip)")
+        if not path:
+            return
+        self.pkg.meta["name"] = self.name_edit.text() or "Untitled"
+        self.pkg.meta["author"] = self.author_edit.text() if not self.anonymous_check.isChecked() else "匿名"
+        self.pkg.meta["anonymous"] = self.anonymous_check.isChecked()
+        self.partA_widget.save_to_pkg()
+        self.partB_widget.save_to_pkg()
+        self.partC_widget.save_to_pkg()
+        try:
+            with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr('data.json', json.dumps(self.pkg.to_dict(), indent=2))
+                if self.pkg.partA_video_path and os.path.exists(self.pkg.partA_video_path):
+                    zf.write(self.pkg.partA_video_path, os.path.basename(self.pkg.partA_video_path))
+                # 收集 Part B/C 引用的音频（Part C 仅“上传音频”模式；Part B 9 处均可选），去重后写入
+                audio_files, seen = [], set()
+                def _add_audio(p):
+                    if p and os.path.exists(p) and p not in seen:
+                        seen.add(p)
+                        audio_files.append(p)
+                if self.pkg.partC_source_type == "audio":
+                    _add_audio(self.pkg.partC_audio_path)
+                _add_audio(self.pkg.partB_listening_audio)
+                for q in self.pkg.partB_three_questions:
+                    _add_audio(q.get("en_audio"))
+                for a in self.pkg.partB_five_answers:
+                    _add_audio(a.get("q_audio"))
+                for ap in audio_files:
+                    zf.write(ap, os.path.basename(ap))
+            QMessageBox.information(self, "成功", f"题目包已保存至 {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "保存失败", str(e))
+
+class PartAEditor(QWidget):
+    def __init__(self, pkg):
+        super().__init__()
+        self.pkg = pkg
+        layout = QFormLayout()
+        self.video_label = QLabel("未选择视频")
+        btn_video = QPushButton("选择视频")
+        btn_video.clicked.connect(self.upload_video)
+        video_box = QHBoxLayout()
+        video_box.addWidget(self.video_label)
+        video_box.addWidget(btn_video)
+        layout.addRow("视频文件：", video_box)
+        self.hidden_edit = QTextEdit()
+        self.hidden_edit.setPlaceholderText("输入隐藏原文（仅用于考后批改）")
+        layout.addRow("原文文本(隐藏)：", self.hidden_edit)
+        self.setLayout(layout)
+
+    def upload_video(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择视频", "", "视频文件 (*.mp4 *.avi *.mkv *.mov)")
+        if path:
+            self.pkg.partA_video_path = path
+            self.video_label.setText(os.path.basename(path))
+
+    def save_to_pkg(self):
+        self.pkg.partA_hidden_text = self.hidden_edit.toPlainText()
+
+    def refresh(self):
+        if self.pkg.partA_video_path:
+            self.video_label.setText(os.path.basename(self.pkg.partA_video_path))
+        else:
+            self.video_label.setText("未选择视频")
+        self.hidden_edit.setPlainText(self.pkg.partA_hidden_text)
+
+class PartBEditor(QWidget):
+    def __init__(self, pkg):
+        super().__init__()
+        self.pkg = pkg
+        self._listening_audio_path = None
+        self._listening_audio_label = None
+        self._three_audio = []       # 每问"英文机答"的可选音频（绝对路径或 None）
+        self._three_audio_labels = []
+        self._five_audio = []        # 每答"英文问题"的可选音频
+        self._five_audio_labels = []
+        self.setup_ui()
+
+    def _make_audio_row(self):
+        """生成一行「文件名 + 选择音频 + 清除」，返回 (layout, label, btn_choose, btn_clear)。"""
+        label = QLabel("未选择音频")
+        label.setStyleSheet("color:#666;")
+        btn_choose = QPushButton("选择音频")
+        btn_clear = QPushButton("清除")
+        row = QHBoxLayout()
+        row.addWidget(label)
+        row.addWidget(btn_choose)
+        row.addWidget(btn_clear)
+        return row, label, btn_choose, btn_clear
+
+    def _choose_audio(self, label):
+        path, _ = QFileDialog.getOpenFileName(self, "选择音频", "", "音频文件 (*.wav *.mp3 *.ogg *.m4a)")
+        if path:
+            label.setText(os.path.basename(path))
+        return path
+
+    def _clear_audio(self, label):
+        label.setText("未选择音频")
+        return None
+
+    def setup_ui(self):
+        scroll = QScrollArea()
+        widget = QWidget()
+        form = QFormLayout()
+        self.situation_edit = QTextEdit()
+        self.situation_edit.setPlaceholderText("情景介绍（学生自读）")
+        form.addRow("情景介绍：", self.situation_edit)
+        self.listen_edit = QTextEdit()
+        self.listen_edit.setPlaceholderText("三问前听力文本（电脑 TTS 朗读，也可上传音频）")
+        form.addRow("听力文本：", self.listen_edit)
+        l_row, self._listening_audio_label, l_btn, l_clear = self._make_audio_row()
+        l_btn.clicked.connect(lambda: self._set_listening_audio(self._choose_audio(self._listening_audio_label)))
+        l_clear.clicked.connect(lambda: self._clear_listening_audio(self._clear_audio(self._listening_audio_label)))
+        form.addRow("听力音频（可选）：", l_row)
+
+        self.three_group = QGroupBox("三问设置（每题）")
+        three_layout = QVBoxLayout()
+        self.three_widgets = []
+        self._three_audio = []
+        self._three_audio_labels = []
+        for i in range(3):
+            g = QGroupBox(f"第{i+1}问")
+            inner = QFormLayout()
+            cn = QLineEdit(); cn.setPlaceholderText("中文提示")
+            en = QLineEdit(); en.setPlaceholderText("英文机答 (TTS)")
+            hid = QLineEdit(); hid.setPlaceholderText("标准答案(隐藏)")
+            inner.addRow("中文提示：", cn)
+            inner.addRow("英文机答：", en)
+            a_row, a_label, a_btn, a_clear = self._make_audio_row()
+            a_btn.clicked.connect(lambda _, i=i, lb=a_label: self._set_three_audio(i, self._choose_audio(lb)))
+            a_clear.clicked.connect(lambda _, i=i, lb=a_label: self._clear_three_audio(i, self._clear_audio(lb)))
+            inner.addRow("机答音频（可选）：", a_row)
+            inner.addRow("标准答案：", hid)
+            g.setLayout(inner)
+            three_layout.addWidget(g)
+            self.three_widgets.append((cn, en, hid))
+            self._three_audio.append(None)
+            self._three_audio_labels.append(a_label)
+        self.three_group.setLayout(three_layout)
+        form.addRow(self.three_group)
+
+        self.five_group = QGroupBox("五答设置（每题）")
+        five_layout = QVBoxLayout()
+        self.five_widgets = []
+        self._five_audio = []
+        self._five_audio_labels = []
+        for i in range(5):
+            g = QGroupBox(f"第{i+1}答")
+            inner = QFormLayout()
+            q = QLineEdit(); q.setPlaceholderText("英文问题 (TTS)")
+            hid = QLineEdit(); hid.setPlaceholderText("标准答案(隐藏)")
+            inner.addRow("英文问题：", q)
+            a_row, a_label, a_btn, a_clear = self._make_audio_row()
+            a_btn.clicked.connect(lambda _, i=i, lb=a_label: self._set_five_audio(i, self._choose_audio(lb)))
+            a_clear.clicked.connect(lambda _, i=i, lb=a_label: self._clear_five_audio(i, self._clear_audio(lb)))
+            inner.addRow("问题音频（可选）：", a_row)
+            inner.addRow("标准答案：", hid)
+            g.setLayout(inner)
+            five_layout.addWidget(g)
+            self.five_widgets.append((q, hid))
+            self._five_audio.append(None)
+            self._five_audio_labels.append(a_label)
+        self.five_group.setLayout(five_layout)
+        form.addRow(self.five_group)
+        widget.setLayout(form)
+        scroll.setWidget(widget)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(scroll)
+        self.setLayout(main_layout)
+
+    # ---- 音频存取（绝对路径保存在内存，序列化时转 basename）----
+    def _set_listening_audio(self, path):
+        self._listening_audio_path = path
+
+    def _clear_listening_audio(self, _):
+        self._listening_audio_path = None
+
+    def _set_three_audio(self, i, path):
+        self._three_audio[i] = path
+
+    def _clear_three_audio(self, i, _):
+        self._three_audio[i] = None
+
+    def _set_five_audio(self, i, path):
+        self._five_audio[i] = path
+
+    def _clear_five_audio(self, i, _):
+        self._five_audio[i] = None
+
+    def save_to_pkg(self):
+        self.pkg.partB_situation = self.situation_edit.toPlainText()
+        self.pkg.partB_listening_text = self.listen_edit.toPlainText()
+        self.pkg.partB_listening_audio = self._listening_audio_path
+        self.pkg.partB_three_questions = []
+        for i, (cn, en, hid) in enumerate(self.three_widgets):
+            self.pkg.partB_three_questions.append({
+                "cn_prompt": cn.text(), "en_answer": en.text(), "hidden_answer": hid.text(),
+                "en_audio": self._three_audio[i]
+            })
+        self.pkg.partB_five_answers = []
+        for i, (q, hid) in enumerate(self.five_widgets):
+            self.pkg.partB_five_answers.append({
+                "en_question": q.text(), "hidden_answer": hid.text(),
+                "q_audio": self._five_audio[i]
+            })
+
+    def refresh(self):
+        self.situation_edit.setPlainText(self.pkg.partB_situation)
+        self.listen_edit.setPlainText(self.pkg.partB_listening_text)
+        self._listening_audio_path = self.pkg.partB_listening_audio
+        self._listening_audio_label.setText(os.path.basename(self.pkg.partB_listening_audio)
+                                            if self.pkg.partB_listening_audio else "未选择音频")
+        for i, (cn, en, hid) in enumerate(self.three_widgets):
+            if i < len(self.pkg.partB_three_questions):
+                q = self.pkg.partB_three_questions[i]
+                cn.setText(q.get("cn_prompt","")); en.setText(q.get("en_answer","")); hid.setText(q.get("hidden_answer",""))
+                self._three_audio[i] = q.get("en_audio")
+            else:
+                cn.setText(""); en.setText(""); hid.setText("")
+                self._three_audio[i] = None
+            self._three_audio_labels[i].setText(os.path.basename(self._three_audio[i]) if self._three_audio[i] else "未选择音频")
+        for i, (q, hid) in enumerate(self.five_widgets):
+            if i < len(self.pkg.partB_five_answers):
+                a = self.pkg.partB_five_answers[i]
+                q.setText(a.get("en_question","")); hid.setText(a.get("hidden_answer",""))
+                self._five_audio[i] = a.get("q_audio")
+            else:
+                q.setText(""); hid.setText("")
+                self._five_audio[i] = None
+            self._five_audio_labels[i].setText(os.path.basename(self._five_audio[i]) if self._five_audio[i] else "未选择音频")
+
+class PartCEditor(QWidget):
+    def __init__(self, pkg):
+        super().__init__()
+        self.pkg = pkg
+        layout = QFormLayout()
+        self.summary_edit = QTextEdit()
+        self.summary_edit.setPlaceholderText("故事梗概")
+        self.keywords_edit = QLineEdit()
+        self.keywords_edit.setPlaceholderText("关键词提示（逗号分隔）")
+        layout.addRow("故事梗概：", self.summary_edit)
+        layout.addRow("关键词：", self.keywords_edit)
+
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["电脑 TTS 朗读", "上传音频文件"])
+        self.source_combo.currentIndexChanged.connect(self.toggle_source)
+        layout.addRow("故事音频来源：", self.source_combo)
+
+        self.tts_edit = QTextEdit()
+        self.tts_label = QLabel("故事全文：")
+        self.tts_edit.setPlaceholderText("输入故事全文，电脑 TTS 朗读")
+        layout.addRow(self.tts_label, self.tts_edit)
+
+        self.audio_label = QLabel("未选择音频")
+        self.audio_btn = QPushButton("选择音频")
+        self.audio_btn.clicked.connect(self.upload_audio)
+        audio_box = QHBoxLayout()
+        audio_box.addWidget(self.audio_label)
+        audio_box.addWidget(self.audio_btn)
+        layout.addRow("音频文件：", audio_box)
+
+        self.key_points_edit = QTextEdit()
+        self.key_points_edit.setPlaceholderText("答案要点（隐藏，用于批改）")
+        layout.addRow("答案要点：", self.key_points_edit)
+        self.setLayout(layout)
+
+    def toggle_source(self):
+        is_tts = self.source_combo.currentIndex() == 0
+        self.audio_label.setVisible(not is_tts)
+        self.audio_btn.setVisible(not is_tts)
+        # TTS 模式：故事全文必填；上传音频模式：故事全文选填（仅参考）
+        if is_tts:
+            self.tts_label.setText("故事全文：")
+            self.tts_edit.setPlaceholderText("输入故事全文，电脑 TTS 朗读")
+        else:
+            self.tts_label.setText("故事全文（选填）：")
+            self.tts_edit.setPlaceholderText("故事全文（选填，仅作参考，不用于播放）")
+
+    def upload_audio(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择音频", "", "音频文件 (*.wav *.mp3 *.ogg)")
+        if path:
+            self.pkg.partC_audio_path = path
+            self.audio_label.setText(os.path.basename(path))
+
+    def save_to_pkg(self):
+        self.pkg.partC_summary = self.summary_edit.toPlainText()
+        self.pkg.partC_keywords = self.keywords_edit.text()
+        self.pkg.partC_source_type = "tts" if self.source_combo.currentIndex() == 0 else "audio"
+        self.pkg.partC_tts_text = self.tts_edit.toPlainText()
+        self.pkg.partC_key_points = self.key_points_edit.toPlainText()
+
+    def refresh(self):
+        self.summary_edit.setPlainText(self.pkg.partC_summary)
+        self.keywords_edit.setText(self.pkg.partC_keywords)
+        if self.pkg.partC_source_type == "audio":
+            self.source_combo.setCurrentIndex(1)
+            if self.pkg.partC_audio_path:
+                self.audio_label.setText(os.path.basename(self.pkg.partC_audio_path))
+        else:
+            self.source_combo.setCurrentIndex(0)
+        self.tts_edit.setPlainText(self.pkg.partC_tts_text)
+        self.key_points_edit.setPlainText(self.pkg.partC_key_points)
+        self.toggle_source()
+
+# ------------------ 练习 / 模考 模式 ------------------
+# 练习模式：可跳过 / 上一步，开头试音也能跳过
+# 模考模式：跳过 / 上一步 均禁用，试音也不能跳过
+class PracticePage(QWidget):
+    signal_update_display = pyqtSignal(str, str)
+    signal_tts_ready = pyqtSignal()
+    signal_tts_next = pyqtSignal()
+    signal_tts_file_ready = pyqtSignal(str)   # edge-tts 生成的音频文件就绪（主线程播放）
+    signal_finished = pyqtSignal()
+    # VLC 的事件回调运行在 VLC 自己的线程里，**绝不能**在那里直接碰 Qt 对象
+    # （QTimer / QWidget 都只能在主线程用）。用信号转发回主线程再处理。
+    signal_vlc_playing = pyqtSignal()
+    signal_vlc_ended = pyqtSignal()
+
+    # ---- 模式与专项训练 ----
+    # special（专项训练）：与 practice 一样可用跳过/上一步，但【免试音】、只跑选定篇目，
+    # 进度/历史与 练习/模考 完全隔离（进度文件名含篇目键，历史记录带 mode+parts）。
+    _MODE_TEXT = {"practice": "练习", "exam": "模考", "special": "专项训练"}
+    _PART_ORDER = ("partA", "partB", "partC")
+    _PART_LETTER = {"partA": "A", "partB": "B", "partC": "C"}
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.pkg = None
+        self.session = None
+        # 关闭 OSD / 标题等，减少 Windows 下嵌入 VLC 时 Direct3D 与主线程消息循环的冲突。
+        # ⚠️ 传参必须用**列表**：python-vlc 把单个字符串当成「一个」参数，
+        #    写成 "--a --b" 时后面所有选项都会被吞掉。
+        # ⚠️ 但注意：这里的 --avcodec-hw=none 对 VLC 3.0 的 D3D11VA **实测无效**
+        #    （日志仍出现 "Using D3D11VA ... for hardware decoding"）。
+        #    真正能禁用硬解的是 **媒体级** 选项，见 `_make_media()`：
+        #        media.add_option(":avcodec-hw=none")
+        #    这里的参数保留作兜底（万一某些版本认它），真正的开关在 _make_media。
+        self.vlc_instance = vlc.Instance([
+            "--no-video-title-show",
+            "--no-osd",
+            "--no-snapshot-preview",
+            "--avcodec-hw=none",          # ⚠️ Instance 级实测无效，真正生效的是 _make_media 的 media 级选项
+        ])
+        if self.vlc_instance is None:
+            raise RuntimeError(
+                "VLC 初始化失败：无法创建 vlc.Instance()。\n"
+                "请确认 G:\\emm\\VLC\\ 目录存在且包含完整的 VLC 插件（plugins 文件夹）。\n"
+                "如果根目录有 libvlc.dll，请尝试将其删除或重命名，让程序使用 VLC\\ 子目录下的完整版本。"
+            )
+        self.player = self.vlc_instance.media_player_new()
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._on_tick)
+        self._current_phase = None
+        self._phase_end_time = 0
+        self._timer_callback = None
+        self._teardown_done = False  # 守卫标志：teardown 后所有延迟回调应跳过
+        self._audio_frames = []
+        self._stream = None
+        self._is_recording = False
+        self._tts_stop_event = None
+        self._tts_thread = None
+        self._tts_next_callback = None
+        self._navigating = False
+        self._exam_active = False
+        self._resume_cp = None  # 练习模式恢复进度时，mic 测试通过后跳到的重进点
+        self.mode = "practice"
+        self.selected_parts = {"A", "B", "C"}  # 专项训练选定的篇目；练习/模考恒为全部
+        self._b_moments = []
+        self._win_key_blocker = None
+        self._fullscreen = False
+        # VLC 视频嵌入到 Qt 的 video_frame（set_hwnd）；点击由 _disable_vlc_input 禁用其输入
+        self._vlc_parent_hwnd = None
+        # ⚠️ 这两个事件的回调都在 VLC 线程里跑：只能 emit 信号（线程安全），
+        #    由 Qt 队列回主线程执行真正的处理 —— 直接调 QTimer.singleShot 会得到
+        #    "QObject::startTimer: Timers can only be used with threads started with QThread"
+        #    并可能让定时器在错误线程触发 → 播放中闪退。
+        self.signal_vlc_playing.connect(self._on_vlc_playing)
+        self.signal_vlc_ended.connect(self._on_vlc_ended)
+        self.player.event_manager().event_attach(
+            vlc.EventType.MediaPlayerPlaying, lambda e: self.signal_vlc_playing.emit())
+        self.player.event_manager().event_attach(
+            vlc.EventType.MediaPlayerEndReached, lambda e: self.signal_vlc_ended.emit())
+
+        self.setup_ui()
+        self.signal_update_display.connect(self._update_display)
+        self.signal_tts_ready.connect(self._prepare_tts_done)
+        self.signal_tts_next.connect(self._on_tts_next)
+        self.signal_tts_file_ready.connect(self._on_tts_file_ready)
+        self.signal_finished.connect(self._on_exam_finished)
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        self.main_label = QLabel("准备开始练习")
+        self.main_label.setAlignment(Qt.AlignCenter)
+        self.main_label.setStyleSheet("font-size:28px; font-weight:bold;")
+        self.sub_label = QLabel("")
+        self.sub_label.setAlignment(Qt.AlignCenter)
+        self.sub_label.setStyleSheet("font-size:18px; color:gray;")
+        self.countdown_label = QLabel("")
+        self.countdown_label.setAlignment(Qt.AlignCenter)
+        self.countdown_label.setStyleSheet("font-size:20px; color:#e74c3c; font-weight:bold;")
+        self.countdown_label.hide()
+
+        # 视频区：用 video_frame 作为 VLC 的嵌入画布（set_hwnd 把视频渲染到这个原生窗口）。
+        # 点击问题在 _disable_vlc_input 里通过禁用视频子窗口输入解决，不再单独开窗口。
+        self.video_container = QFrame()
+        self.video_container.setStyleSheet("background:black;")
+        _grid = QGridLayout(self.video_container)
+        _grid.setContentsMargins(0, 0, 0, 0)
+        self.video_frame = QFrame()
+        self.video_frame.setStyleSheet("background:black;")
+        # ⚠️ 让 Qt 一开始就把 video_frame 建成原生窗口：
+        # 普通 QFrame 的 winId() 是 Qt **隐式**创建的，reparent / 显示隐藏 / 全屏切换
+        # 都可能把它销毁重建 → 句柄变了 → VLC 被迫销毁并重建整个 vout
+        # （每次都要新建 D3D11 设备 + 分配 surface 池，实测一次播放建 2~3 个），
+        # 而 vout 越多，stop() 收尾越慢（实测 484 / 821 / 1273 ms）。
+        # WA_DontCreateNativeAncestors：别把祖先也变成原生窗口，减少句柄变动面。
+        self.video_frame.setAttribute(Qt.WA_NativeWindow, True)
+        self.video_frame.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
+        _grid.addWidget(self.video_frame, 0, 0)
+        self.text_display = QTextEdit()
+        self.text_display.setReadOnly(True)
+        self.text_display.setStyleSheet("font-size:18px;")
+        self.display_stack = QStackedWidget()
+        self.display_stack.addWidget(self.video_container)
+        self.display_stack.addWidget(self.text_display)
+
+        # 录音指示：作为 video_container 的子控件居中显示（最开始的版本）
+        self.recording_overlay = QLabel("🔴 录音中...", self.video_container)
+        self.recording_overlay.setAlignment(Qt.AlignCenter)
+        self.recording_overlay.setStyleSheet("color:white; font-size:28px; background:rgba(0,0,0,150); border-radius:10px;")
+        self.recording_overlay.setFixedSize(200, 60)
+        self.recording_overlay.move((self.video_container.width() - 200) // 2, 20)
+        self.recording_overlay.hide()
+
+        layout.addWidget(self.main_label)
+        layout.addWidget(self.sub_label)
+        layout.addWidget(self.countdown_label)
+        layout.addWidget(self.display_stack)
+
+        btn_layout = QHBoxLayout()
+        self.start_btn = QPushButton("开始练习")
+        self.start_btn.clicked.connect(self.start_exam)
+        self.skip_btn = QPushButton("⏭  跳过")
+        self.skip_btn.setStyleSheet(
+            "QPushButton { background:#f39c12; color:white; border:1px solid #e67e22; font-weight:bold; }"
+            "QPushButton:disabled { background:#bdc3c7; color:#ecf0f1; }"
+            "QPushButton:hover:!disabled { background:#e67e22; }"
+        )
+        self.skip_btn.setEnabled(False)
+        self.skip_btn.clicked.connect(self._skip_current)
+        self.prev_btn = QPushButton("⏮  上一步")
+        self.prev_btn.setStyleSheet(
+            "QPushButton { background:#3498db; color:white; border:1px solid #2980b9; font-weight:bold; }"
+            "QPushButton:disabled { background:#bdc3c7; color:#ecf0f1; }"
+            "QPushButton:hover:!disabled { background:#2980b9; }"
+        )
+        self.prev_btn.setEnabled(False)
+        self.prev_btn.clicked.connect(self._prev_current)
+        btn_back = QPushButton("返回主页")
+        btn_back.clicked.connect(self._request_back)
+        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.prev_btn)
+        btn_layout.addWidget(self.skip_btn)
+        btn_layout.addWidget(btn_back)
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+        self.video_container.resizeEvent = self._resize_video
+
+    def _resize_video(self, event):
+        """video_container 尺寸变化时，重新居中录音提示。"""
+        self.recording_overlay.move((self.video_container.width() - 200) // 2, 20)
+
+    # ---------- 退出 / 收尾 ----------
+    def _request_back(self):
+        """返回主页按钮：考试中需确认，确认后结束并回家（不记录历史）。"""
+        if self.request_exit():
+            self.main.go_to(self.main.home_page)
+
+    def _confirm_abort(self):
+        """考试中途退出的确认提示。返回 True 表示确认退出。"""
+        reply = QMessageBox.warning(
+            self, "确认退出",
+            "中途退出将保存当前进度与已录制音频，下次可从本次位置继续。\n确定要退出吗？",
+            QMessageBox.Yes | QMessageBox.No)
+        return reply == QMessageBox.Yes
+
+    def request_exit(self):
+        """返回 True 表示允许退出（已确认或无需确认）。
+
+        ⚠️ 这里**不要**额外做「解绑嵌入窗口」（`set_hwnd(0)`）来"帮助"停止：
+        实测 Windows 上 set_hwnd(0) 不解绑，反而让 VLC 把视频窗口重挂到桌面、
+        销毁并重建整个 vout（D3D11 设备 + surface 池），stop() 直接慢 3 倍。
+        停止一律交给 `_stop_video()`（内部在后台线程 stop，主线程只等 50ms 就走）。"""
+        if self._exam_active:
+            if not self._confirm_abort():
+                return False
+        self._teardown_exam()
+        return True
+
+    def _teardown_exam(self):
+        """停止一切声画/计时/录音，保存当前进度与正在录的音，然后回到开考前初始界面。
+        中途退出调用；正常结束不经过这里。"""
+        self._teardown_done = True  # 先设标志，让所有 pending 回调立即跳过
+        self.timer.stop()
+        # 强制停止 TTS 线程
+        self._cancel_tts()
+        if self._tts_thread and self._tts_thread.is_alive():
+            self._tts_thread.join(timeout=0.5)
+        # 停止 VLC（后台线程 stop，主线程只等 50ms，不会拖住退出流程）
+        self._stop_video()
+        self.player.audio_set_volume(100)
+        # 先把正在录的音保存下来，再把进度写入文件
+        self._finalize_current_recording()
+        if self._exam_active and self._current_phase:
+            self._save_progress()
+        self.stop_recording()
+        self._reset_page_state()
+
+    def _reset_page_state(self):
+        """放弃当前考试全部内容，回到开考前/练习前的初始界面。
+        中途退出、正常结束后再次进入都靠它恢复成“刚打开”的状态。"""
+        self._exam_active = False
+        self._teardown_done = False
+        self._navigating = False
+        self._resume_cp = None
+        self._current_phase = None
+        self._step_index = 0
+        self._b_step = 0
+        self._c_step = 0
+        self._b_moments = []
+        self._timer_callback = None
+        self._tts_next_callback = None
+        self._audio_callback = None
+        self._is_recording = False
+        self._audio_frames = []
+        self.countdown_label.hide()
+        self.recording_overlay.hide()
+        self._stop_video()
+        self.display_stack.setCurrentWidget(self.text_display)
+        self.main_label.setText("准备开始" + self._mode_text())
+        self.sub_label.setText("")
+        self._stop_parse_timer()
+        self._parse_media = None
+        self.start_btn.setEnabled(True)
+        self._update_nav_buttons()
+        self._restore_window()
+        self._unblock_windows_key()
+
+    def abort_exam(self):
+        """兼容旧调用（如关闭窗口时）。等同 _request_back 的收尾逻辑。"""
+        self._teardown_exam()
+
+    def _block_windows_key(self):
+        """模考模式：安装底层键盘钩子屏蔽 Windows 键。"""
+        if sys.platform != "win32":
+            return
+        try:
+            if self._win_key_blocker is None:
+                self._win_key_blocker = WindowsKeyBlocker()
+            self._win_key_blocker.install()
+        except Exception as e:
+            print("Windows 键屏蔽安装失败：", e)
+            self._win_key_blocker = None
+
+    def _unblock_windows_key(self):
+        """卸载 Windows 键屏蔽（考试结束/退出时调用）。"""
+        if self._win_key_blocker is not None:
+            try:
+                self._win_key_blocker.uninstall()
+            except Exception:
+                pass
+            self._win_key_blocker = None
+
+    # ---------- 进度保存 / 恢复 ----------
+    def _progress_file_path(self):
+        """返回当前模式 + 当前题目包对应的进度文件路径。
+        模式与题目包分别编码进文件名，练习/模考/专项进度天然隔离、不会混用。
+        专项训练还会把选定篇目编码进文件名（如 progress_special_AB_包名.json），
+        使 A-only / B-only / AB 等组合的进度互不干扰。"""
+        pkg = self.pkg or getattr(self.main, "current_package", None)
+        pkg_name = pkg.meta.get("name", "untitled") if pkg else "untitled"
+        safe = "".join(c for c in pkg_name if c.isalnum() or c in (" ", "-", "_")).rstrip().replace(" ", "_")
+        if not safe:
+            safe = "untitled"
+        if self.mode == "special":
+            return os.path.join(HISTORY_DIR, f"progress_special_{self._parts_key()}_{safe}.json")
+        return os.path.join(HISTORY_DIR, f"progress_{self.mode}_{safe}.json")
+
+    def _save_progress(self):
+        """把当前考试/练习进度写入文件，包含已保存的录音路径与当前检查点。
+        中途退出时调用，以便下次从该检查点继续。"""
+        if not self.pkg or not self.session:
+            return
+        try:
+            data = {
+                "mode": self.mode,
+                "package": self.pkg.meta.get("name", ""),
+                "phase": self._current_phase,
+                "step_index": getattr(self, "_step_index", 0),
+                "b_step": getattr(self, "_b_step", 0),
+                "b_moments": getattr(self, "_b_moments", []),
+                "c_step": getattr(self, "_c_step", 0),
+                "mic_test_active": self._current_phase == "mic" and getattr(self, "_is_recording", False),
+                "prepare_text": getattr(self, "_prepare_text", ""),
+                "video_duration": getattr(self, "video_duration", 60),
+                "parts": sorted(self.selected_parts),
+                "recordings": {
+                    "partA": self.session.partA_recording,
+                    "partB": self.session.partB_slots,
+                    "partC": self.session.partC_recording,
+                },
+                "timestamp": datetime.datetime.now().isoformat(),
+            }
+            os.makedirs(HISTORY_DIR, exist_ok=True)
+            with open(self._progress_file_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            print("保存进度失败：", e)
+
+    def _load_progress(self):
+        """读取当前模式 + 当前题目包的进度文件。不存在或损坏时返回 None。"""
+        path = self._progress_file_path()
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print("读取进度失败：", e)
+            return None
+
+    def _clear_progress(self, delete_recordings=False):
+        """删除进度文件（正常完成或用户选择重新开考）。
+        delete_recordings=True 时（用户主动“重新开始”），会先删除进度中记录的全部已录音
+        WAV 文件，避免废弃音频残留占用磁盘；正常完成考试时调用不带此参数，保留录音用于
+        线下批改与历史。"""
+        if delete_recordings:
+            try:
+                data = self._load_progress()
+            except Exception:
+                data = None
+            if data:
+                recs = data.get("recordings", {}) or {}
+                paths = []
+                if recs.get("partA"):
+                    paths.append(recs["partA"])
+                if recs.get("partC"):
+                    paths.append(recs["partC"])
+                for v in (recs.get("partB") or {}).values():
+                    if v:
+                        paths.append(v)
+                for p in paths:
+                    try:
+                        if p and os.path.exists(p):
+                            os.remove(p)
+                            print("已删除录音：", p)
+                    except Exception as e:
+                        print("删除录音失败：", e)
+        path = self._progress_file_path()
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception as e:
+                print("清理进度文件失败：", e)
+
+    def _describe_progress(self, data):
+        """把进度数据转成给用户看的简短摘要（用于恢复对话框）。"""
+        mode_text = self._MODE_TEXT.get(data.get("mode"), "练习")
+        phase_map = {"mic": "试音阶段", "partA": "A 篇", "partB": "B 篇", "partC": "C 篇"}
+        phase = phase_map.get(data.get("phase", ""), data.get("phase", "未知"))
+        ts = data.get("timestamp", "")
+        ts_show = ts[:19].replace("T", " ") if ts else "未知"
+        recs = data.get("recordings", {}) or {}
+        n = 0
+        if recs.get("partA"):
+            n += 1
+        if recs.get("partC"):
+            n += 1
+        n += len([v for v in (recs.get("partB") or {}).values() if v])
+        parts = data.get("parts")
+        part_line = ""
+        if data.get("mode") == "special" and parts:
+            part_line = "训练篇目：" + "、".join(f"Part {p}" for p in parts) + "\n"
+        return (f"模式：{mode_text}\n{part_line}当前位置：{phase}\n"
+                f"已录音：{n} 段\n保存时间：{ts_show}")
+
+    def _check_and_prompt_progress(self):
+        """进入练习/模考页面后调用：先检查当前模式 + 当前题目包是否有“一半”的进度。
+        有则弹窗显示进度摘要，让用户选择【继续】还是【重新开始】；没有则什么都不做，
+        等待用户点“开始”。练习与模考进度分文件保存，互不干扰。"""
+        saved = self._load_progress()
+        if not saved:
+            return
+        mode_text = self._mode_text()
+        desc = self._describe_progress(saved)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("恢复进度")
+        msg.setText(f"检测到未完成的{mode_text}进度：\n\n{desc}\n\n是否继续？")
+        btn_continue = msg.addButton("继续" + mode_text, QMessageBox.AcceptRole)
+        btn_restart = msg.addButton("重新开始", QMessageBox.RejectRole)
+        msg.setDefaultButton(btn_continue)
+        msg.exec_()
+        clicked = msg.clickedButton()
+        if clicked == btn_continue:
+            self._restore_progress(saved)
+        elif clicked == btn_restart:
+            # 重新开始：清除进度文件与已录制音频，回到开考前初始状态
+            self._clear_progress(delete_recordings=True)
+            self.start_btn.setText("开始" + self._mode_text())
+            self._update_nav_buttons()
+        # 若用户直接关闭对话框（未选择），保持当前初始状态，进度文件保留供下次处理
+
+    def _restore_progress(self, data):
+        """根据保存的进度数据恢复 session、录音路径与当前检查点，并继续考试。
+
+        重进规则（彻底抛弃前面的精确恢复）：
+        - Part A: 未到录音结束(idx<7) → 从 A 开场白(idx=0, PartA-Intro) 开始
+        - Part B: 未到第1个录音点 → 从 B 开头(PartB-Intro) 开始；
+                   已到录音点区域 → 从该录音点的准备点（prep_q / 请听问题）开始
+        - Part C: 始终从 C 开头(PartC-Intro) 开始
+        """
+        self.pkg = self.main.current_package
+        self.session = PracticeSession(self.pkg.meta.get("name", "练习"))
+        recs = data.get("recordings", {})
+        self.session.partA_recording = recs.get("partA")
+        self.session.partB_slots = recs.get("partB", {}) or {}
+        self.session.partC_recording = recs.get("partC")
+
+        # 专项训练：先还原「上次选定的篇目」，重进目标才能正确按篇目过滤
+        if self.mode == "special":
+            saved_parts = data.get("parts")
+            if saved_parts:
+                self.selected_parts = set(saved_parts)
+
+        self._exam_active = True
+        self.start_btn.setEnabled(False)
+        self._update_nav_buttons()
+        if self.mode == "exam":
+            self._enter_fullscreen()
+            self._block_windows_key()
+
+        phase = data.get("phase")
+        # 试音阶段：如果上次正在录音，直接回到试音录音；否则从头准备
+        # （专项训练不会进入试音阶段，这里仅练习/模考会命中）
+        if phase == "mic":
+            self._prepare_text = data.get("prepare_text", "")
+            if data.get("mic_test_active"):
+                self._mic_test()
+            else:
+                self._prepare_phase()
+            return
+
+        self._b_moments = data.get("b_moments", [])
+        self._step_index = data.get("step_index", 0)
+        self._b_step = data.get("b_step", 0)
+        self._c_step = data.get("c_step", 0)
+        self.video_duration = data.get("video_duration", 60)
+
+        # 统一用 G 列（_REENTRY_CHECKPOINTS）算出重进目标
+        if phase == "partA":
+            cp = self._find_reentry_checkpoint(self._REENTRY_CHECKPOINTS, "partA", self._step_index)
+            target = cp if cp else ("partA", 0)
+        elif phase == "partB":
+            first_rec = self._first_b_record_index()
+            if self._b_step < first_rec:
+                target = ("partB", 0)          # 没到第1个录音点，从 B 开头开始
+            else:
+                cp = self._find_reentry_checkpoint(self._REENTRY_CHECKPOINTS, "partB", self._b_step)
+                target = cp if cp else ("partB", 0)
+        elif phase == "partC":
+            target = ("partC", 0)              # 始终从 C 开头开始
+        else:
+            target = ("partA", 0)
+        # 兜底：若重进目标篇目不在本次选定范围内（数据异常），退回首个选定篇目
+        if not self._phase_selected(target[0]):
+            first = self._first_selected_part()
+            target = (first, 0) if first else ("partA", 0)
+
+        # 直接跳到重进点（练习/模考/专项统一，专项不重复 mic 测试）
+        self._go_to_checkpoint(target, replay=True)
+
+    # ---------- 检查点表（来自页面清单 Excel 列 G / 列 H） ----------
+    #
+    # 列 G「重进落点」：_restore_progress 用（重进/断点续传时的起始页）
+    # 列 H「上一步落点」：_prev_checkpoint 使用（按"上一步"按钮时跳到的目标）
+    #
+    # 规则：↑ 表示当前页的 上一步/重进 目标 = 往上找最近的 ● 标记页
+    #       无   表示录音中，不可上一步（按钮置灰）
+    #
+    # 两套表的差异：
+    #   - H 表多了 A-recordPrep（step=6），G 表没有
+    #   - G 表有 B-intro（b_step=0），H 表没有（B-intro 的 ↑ 跳到 A-recordPrep）
+    #
+
+    # H 列：上一步目标（_prev_checkpoint 使用）
+    _PREV_CHECKPOINTS = [
+        ("partA", 0,  "A-intro"),         # R2
+        ("partA", 6,  "A-recordPrep"),    # R8  ← 比 G 多此行！
+        ("partB", 4,  "B-prepQ1"),        # R14 (b_step=4,  prep_q idx=0)
+        ("partB", 9,  "B-prepQ2"),        # R17 (b_step=9,  prep_q idx=1)
+        ("partB", 14, "B-prepQ3"),        # R20 (b_step=14, prep_q idx=2)
+        ("partB", 20, "B-hearQ1"),        # R24 (b_step=20, hear_q idx=0)
+        ("partB", 24, "B-hearQ2"),        # R28 (b_step=24, hear_q idx=1)
+        ("partB", 28, "B-hearQ3"),        # R32 (b_step=28, hear_q idx=2)
+        ("partB", 32, "B-hearQ4"),        # R36 (b_step=32, hear_q idx=3)
+        ("partB", 36, "B-hearQ5"),        # R40 (b_step=36, hear_q idx=4)
+        ("partC", 0,  "C-intro"),         # R44
+    ]
+
+    # G 列：重进目标（_restore_progress 使用）
+    _REENTRY_CHECKPOINTS = [
+        ("partA", 0,  "A-intro"),         # R2
+        ("partB", 0,  "B-intro"),          # R10 ← H 表没有此行（B-intro 的 ↑ 跳到 A-recordPrep）
+        ("partB", 4,  "B-prepQ1"),        # R14
+        ("partB", 9,  "B-prepQ2"),        # R17
+        ("partB", 14, "B-prepQ3"),        # R20
+        ("partB", 20, "B-hearQ1"),        # R24
+        ("partB", 24, "B-hearQ2"),        # R28
+        ("partB", 28, "B-hearQ3"),        # R32
+        ("partB", 32, "B-hearQ4"),        # R36
+        ("partB", 36, "B-hearQ5"),        # R40
+        ("partC", 0,  "C-intro"),         # R44
+    ]
+
+    # I 列：跳过 / 结束录音落点（_skip_advance 使用，来源于 Excel 第 9 列「跳过/结束录音」）
+    #   非录音页：跳过 = 前进到下一页；
+    #   录音页  ：结束录音 = 先保存当前录音，再前进到箭头指向的页；
+    #   C-record：结束录音批改 = 保存后进入批改（signal_finished）。
+    # 值与 Excel 行严格对应：A 0-7 / B 0-33 / C 0-7。
+    _SKIP_NEXT = {
+        # ---- Part A ----
+        ("partA", 0): ("partA", 1),   # A-intro     -> A-video
+        ("partA", 1): ("partA", 2),   # A-video     -> A-prep
+        ("partA", 2): ("partA", 3),   # A-prep      -> A-read
+        ("partA", 3): ("partA", 4),   # A-read      -> A-preListen
+        ("partA", 4): ("partA", 5),   # A-preListen -> A-listen
+        ("partA", 5): ("partA", 6),   # A-listen    -> A-recordPrep
+        ("partA", 6): ("partA", 7),   # A-recordPrep-> A-record
+        ("partA", 7): ("partB", 0),   # A-record    -> 结束录音跳B-intro
+        # ---- Part B ----
+        ("partB", 0): ("partB", 1),   # B-intro       -> B-situation
+        ("partB", 1): ("partB", 2),   # B-situation  -> B-listen
+        ("partB", 2): ("partB", 3),   # B-listen     -> B-askGuide
+        ("partB", 3): ("partB", 4),   # B-askGuide   -> B-prepQ1
+        ("partB", 4): ("partB", 5),   # B-prepQ1     -> B-recQ1
+        ("partB", 5): ("partB", 6),   # B-recQ1      -> 结束录音跳B-ans1(播)
+        ("partB", 6): ("partB", 7),   # B-ans1(播)   -> B-ans1(gap)
+        ("partB", 7): ("partB", 8),   # B-ans1(gap)  -> B-ans1(重播)
+        ("partB", 8): ("partB", 9),   # B-ans1(重播) -> B-prepQ2
+        ("partB", 9): ("partB", 10),  # B-prepQ2     -> B-recQ2
+        ("partB", 10): ("partB", 11), # B-recQ2      -> 结束录音跳B-ans2(播)
+        ("partB", 11): ("partB", 12), # B-ans2(播)   -> B-ans2(gap)
+        ("partB", 12): ("partB", 13), # B-ans2(gap)  -> B-ans2(重播)
+        ("partB", 13): ("partB", 14), # B-ans2(重播) -> B-prepQ3
+        ("partB", 14): ("partB", 15), # B-prepQ3     -> B-recQ3
+        ("partB", 15): ("partB", 16), # B-recQ3      -> 结束录音跳B-ans3(播)
+        ("partB", 16): ("partB", 17), # B-ans3(播)   -> B-ans3(gap)
+        ("partB", 17): ("partB", 18), # B-ans3(gap)  -> B-ans3(重播)
+        ("partB", 18): ("partB", 19), # B-ans3(重播) -> B-ansGuide
+        ("partB", 19): ("partB", 20), # B-ansGuide   -> B-hearQ1(听1)
+        ("partB", 20): ("partB", 21), # B-hearQ1(听1)-> B-hearQ1(听2)
+        ("partB", 21): ("partB", 22), # B-hearQ1(听2)-> B-hearQ1(计时)
+        ("partB", 22): ("partB", 23), # B-hearQ1(计时)-> B-recA1
+        ("partB", 23): ("partB", 24), # B-recA1      -> 结束录音跳B-hearQ2(听1)
+        ("partB", 24): ("partB", 25), # B-hearQ2(听1)-> B-hearQ2(听2)
+        ("partB", 25): ("partB", 26), # B-hearQ2(听2)-> B-hearQ2(计时)
+        ("partB", 26): ("partB", 27), # B-hearQ2(计时)-> B-recA2
+        ("partB", 27): ("partB", 28), # B-recA2      -> 结束录音跳B-hearQ3(听1)
+        ("partB", 28): ("partB", 29), # B-hearQ3(听1)-> B-hearQ3(听2)
+        ("partB", 29): ("partB", 30), # B-hearQ3(听2)-> B-hearQ3(计时)
+        ("partB", 30): ("partB", 31), # B-hearQ3(计时)-> B-recA3
+        ("partB", 31): ("partB", 32), # B-recA3      -> 结束录音跳B-hearQ4(听1)
+        ("partB", 32): ("partB", 33), # B-hearQ4(听1)-> B-hearQ4(听2)
+        ("partB", 33): ("partB", 34), # B-hearQ4(听2)-> B-hearQ4(计时)
+        ("partB", 34): ("partB", 35), # B-hearQ4(计时)-> B-recA4
+        ("partB", 35): ("partB", 36), # B-recA4      -> 结束录音跳B-hearQ5(听1)
+        ("partB", 36): ("partB", 37), # B-hearQ5(听1)-> B-hearQ5(听2)
+        ("partB", 37): ("partB", 38), # B-hearQ5(听2)-> B-hearQ5(计时)
+        ("partB", 38): ("partB", 39), # B-hearQ5(计时)-> B-recA5
+        ("partB", 39): ("partC", 0),  # B-recA5      -> 结束录音跳C-intro
+        # ---- Part C ----
+        ("partC", 0): ("partC", 1),   # C-intro     -> C-keywords
+        ("partC", 1): ("partC", 2),   # C-keywords  -> C-monologue1
+        ("partC", 2): ("partC", 3),   # C-monologue1-> C-gap
+        ("partC", 3): ("partC", 4),   # C-gap       -> C-monologue2
+        ("partC", 4): ("partC", 5),   # C-monologue2-> C-prepRetell
+        ("partC", 5): ("partC", 6),   # C-prepRetell-> C-recordPrep
+        ("partC", 6): ("partC", 7),   # C-recordPrep-> C-record
+        ("partC", 7): "FINISH",       # C-record    -> 结束录音批改
+    }
+
+    @staticmethod
+    def _find_prev_checkpoint(checkpoints, phase, step):
+        """在 checkpoints 表中，找同 phase 内 step < 当前 step 的最后一个 ●。
+
+        找不到则回退到上一个 phase 的最后一个 ●。
+        """
+        prev_cp = None
+        found_phase = False
+        for cp_phase, cp_step, _cp_name in checkpoints:
+            if cp_phase == phase:
+                found_phase = True
+                if cp_step < step:
+                    prev_cp = (cp_phase, cp_step)
+                else:
+                    break  # 已超过当前 step，停止
+            elif found_phase:
+                break  # 已离开当前 phase
+        if prev_cp:
+            return prev_cp
+        # 当前 phase 没有更早的 ● → 回到上一个 phase 最后一个 ●
+        last_of_prev = None
+        for cp_phase, cp_step, _cp_name in checkpoints:
+            if cp_phase == phase:
+                break
+            last_of_prev = (cp_phase, cp_step)
+        return last_of_prev
+
+    @staticmethod
+    def _find_reentry_checkpoint(checkpoints, phase, step):
+        """在 checkpoints 表中，找同 phase 内 step <= 当前 step 的最后一个 ●。
+
+        用于 _restore_progress：从保存位置往前找到最近的重进起点。
+        """
+        best_cp = None
+        for cp_phase, cp_step, _cp_name in checkpoints:
+            if cp_phase == phase:
+                if cp_step <= step:
+                    best_cp = (cp_phase, cp_step)
+                else:
+                    break
+            elif best_cp is not None:
+                break
+        # 如果当前 phase 没有 ≤ step 的 ●（比如 partA step≥7 且 G 表只有 step=0），
+        # 返回该 phase 第一个 ●（即从头开始）
+        if best_cp is None:
+            for cp_phase, cp_step, _cp_name in checkpoints:
+                if cp_phase == phase:
+                    best_cp = (cp_phase, cp_step)
+                    break
+        return best_cp
+
+    def _first_b_record_index(self):
+        """返回 Part B moments 中第一个录音点(record_q/record_a)的索引。"""
+        moments = getattr(self, "_b_moments", [])
+        for i, m in enumerate(moments):
+            if m["t"] in ("record_q", "record_a"):
+                return i
+        return len(moments)
+
+    def _enter_fullscreen(self):
+        if sys.platform == "win32":
+            self.main.showFullScreen()
+        else:
+            self.main.showMaximized()
+        self._fullscreen = True
+
+    def _restore_window(self):
+        if self._fullscreen:
+            self.main.showNormal()
+            self._fullscreen = False
+
+    def _update_skip_label(self):
+        """根据是否正在录音，切换跳过按钮的文案与样式：
+        - 录音中：显示「结束录音」（红色停止样式），点它 = 结束当前录音并前进到下一个点；
+        - 非录音：显示「跳过」（橙色），点它 = 跳到下一个机读/录音点。
+        仍是同一个按钮，不另开一个；模考模式该按钮隐藏，无需切换。"""
+        if self.mode == "exam":
+            return
+        if getattr(self, "_is_recording", False):
+            self.skip_btn.setText("⏹  结束录音")
+            self.skip_btn.setStyleSheet(
+                "QPushButton { background:#e74c3c; color:white; border:1px solid #c0392b; font-weight:bold; }"
+                "QPushButton:disabled { background:#bdc3c7; color:#ecf0f1; }"
+                "QPushButton:hover:!disabled { background:#c0392b; }"
+            )
+        else:
+            self.skip_btn.setText("⏭  跳过")
+            self.skip_btn.setStyleSheet(
+                "QPushButton { background:#f39c12; color:white; border:1px solid #e67e22; font-weight:bold; }"
+                "QPushButton:disabled { background:#bdc3c7; color:#ecf0f1; }"
+                "QPushButton:hover:!disabled { background:#e67e22; }"
+            )
+
+    def _update_nav_buttons(self):
+        """根据模式与考试状态更新跳过/上一步按钮：
+        - 模考模式：直接隐藏（用不了）；
+        - 练习模式：始终显示，考试中启用、未考试时禁用。
+        上一步按钮（练习模式）仅在以下 3 种情况禁用：
+          1. 试音/准备阶段（mic phase）
+          2. A-intro（Part A 开头介绍，step=0）
+          3. 录音中
+        其余所有页面（A 段其余步骤、B 段全部、C 段全部）上一步均可点。"""
+        if self.mode == "exam":
+            self.skip_btn.setVisible(False)
+            self.prev_btn.setVisible(False)
+            return
+        self.skip_btn.setVisible(True)
+        self.prev_btn.setVisible(True)
+        active = getattr(self, "_exam_active", False)
+        rec = getattr(self, "_is_recording", False)
+        # 跳过按钮：考试中始终可用；录音中它化身「结束录音」（见 _update_skip_label）
+        self.skip_btn.setEnabled(active)
+        # 上一步按钮：仅在 试音开头 / 首篇开头 / 录音中 禁用
+        can_prev = active and not rec
+        if can_prev:
+            phase = getattr(self, "_current_phase", "")
+            if phase == "mic":
+                can_prev = False                      # 1. 试音/准备阶段
+            elif phase == "partA" and self._cur_step() == 0 and self.mode != "special":
+                can_prev = False                      # 2. A-intro 开头介绍
+            elif self._prev_allowed_target(phase, self._cur_step()) is None:
+                can_prev = False                      # 3. 已是首个选定篇目的开头（专项关键路径）
+        self.prev_btn.setEnabled(can_prev)
+        self._update_skip_label()
+
+    def _mode_text(self):
+        """当前模式的中文名（练习 / 模考 / 专项训练）。"""
+        return self._MODE_TEXT.get(self.mode, "练习")
+
+    def set_mode(self, mode, parts=None):
+        """设置模式：
+        - 'practice' 练习模式：可跳过 / 上一步，开头试音也能跳过；
+        - 'exam'    模考模式：跳过 / 上一步 均禁用且隐藏，试音也不能跳过；
+        - 'special' 专项训练：可跳过 / 上一步，免试音，只跑 parts 选定的篇目。"""
+        self.mode = mode
+        if mode == "special":
+            if parts:
+                self.selected_parts = set(parts)
+        else:
+            self.selected_parts = {"A", "B", "C"}   # 练习/模考永远是完整流程
+        self.start_btn.setText("开始" + self._mode_text())
+        self._reset_page_state()
+
+    # ---- 专项训练：篇目选择与流转 ----
+    def _parts_key(self):
+        """选定篇目的紧凑键（如 'AB' / 'C'），用于进度文件名区分不同组合。"""
+        return "".join(sorted(self.selected_parts)) or "none"
+
+    def _phase_selected(self, phase):
+        """该阶段（partA/partB/partC）是否在本次训练范围内。非专项模式恒为 True。"""
+        if self.mode != "special":
+            return True
+        return self._PART_LETTER.get(phase, "") in self.selected_parts
+
+    def _first_selected_part(self):
+        for ph in self._PART_ORDER:
+            if self._phase_selected(ph):
+                return ph
+        return None
+
+    def _next_selected_part_after(self, phase):
+        """按 A→B→C 顺序，返回 phase 之后第一个被选定的篇目；没有则 None。"""
+        seen = False
+        for ph in self._PART_ORDER:
+            if ph == phase:
+                seen = True
+                continue
+            if seen and self._phase_selected(ph):
+                return ph
+        return None
+
+    def _start_part_phase(self, phase):
+        if phase == "partA":
+            self._run_part_a()
+        elif phase == "partB":
+            self._run_part_b()
+        elif phase == "partC":
+            self._run_part_c()
+
+    def _start_first_selected_part(self):
+        """进入第一个选定篇目（专项模式开考入口；练习/模考等价于 Part A）。"""
+        first = self._first_selected_part()
+        if first is None:
+            self._reset_page_state()
+            QMessageBox.warning(self, "专项训练", "请先选择要训练的篇目（A / B / C）")
+            return
+        self._start_part_phase(first)
+
+    def _advance_after_part(self, phase):
+        """某篇目正常走完后的去向：下一选定篇目，或结束考试。"""
+        nxt = self._next_selected_part_after(phase)
+        if nxt:
+            self._start_part_phase(nxt)
+        else:
+            self.signal_finished.emit()
+
+    def _prev_allowed_target(self, phase, step):
+        """「上一步」目标（按选定篇目过滤）：目标篇目未选时继续向上找，
+        找不到（已是首个选定篇目的开头）返回 None —— 按钮应置灰。"""
+        prev = self._find_prev_checkpoint(self._PREV_CHECKPOINTS, phase, step)
+        for _ in range(16):     # 表只有 11 行，16 次足够兜底防死循环
+            if prev is None or self._phase_selected(prev[0]):
+                return prev
+            prev = self._find_prev_checkpoint(self._PREV_CHECKPOINTS, prev[0], prev[1])
+        return None
+
+    def start_exam(self):
+        """从“开始”按钮触发：以全新状态开考（进度检查/恢复已在进入页面时处理）。"""
+        self.pkg = self.main.current_package
+        self.session = PracticeSession(self.pkg.meta.get("name", "练习"))
+        self.start_btn.setEnabled(False)
+        self._exam_active = True
+        self._update_nav_buttons()
+        if self.mode == "exam":
+            self._enter_fullscreen()
+            self._block_windows_key()
+        if self.mode == "special":
+            # 专项训练：免试音，直接进入第一个选定篇目
+            self._start_first_selected_part()
+        else:
+            self._prepare_phase()
+
+    def _prepare_phase(self):
+        self._current_phase = "mic"   # 开头试音阶段（准备 + 麦克风测试）
+        author = self.pkg.meta.get("author", "")
+        author_text = f"题目作者：{author}" if author else "题目作者：未知"
+        self._prepare_text = f"{author_text}\n\n生活就像海洋，只有意志坚强的人才能到达彼岸。\nThis is an apple, I like apples, apples are good for our health."
+        self.signal_update_display.emit("准备阶段", self._prepare_text)
+        # 准备阶段朗读用原来的系统 SAPI5（中英混合文本，edge-tts 英文语音读不好中文）
+        self._start_tts(
+            "生活就像海洋，只有意志坚强的人才能到达彼岸。 This is an apple, I like apples, apples are good for our health.",
+            self.signal_tts_ready,
+            force_fallback=True
+        )
+
+    # ---- 麦克风测试 ----
+    def _prepare_tts_done(self):
+        self._mic_test()
+
+    def _mic_test(self):
+        test_text = self._prepare_text + "\n\n请说话，录音10秒..."
+        self.signal_update_display.emit("麦克风测试", test_text)
+        self._start_recording()
+        self._set_timer(10, self._mic_test_playback)
+
+    def _mic_test_playback(self):
+        # 守卫：若已被跳过/导航离开 mic 阶段（_current_phase 不再是 "mic"），静默返回不弹窗
+        if self._current_phase != "mic":
+            return
+        self._stop_recording()
+        test_path = self._save_recording("mic_test")
+        if os.path.exists(test_path):
+            # 练习/模考统一：播放录音 → 弹窗确认 → 进入 Part A
+            media = self._make_media(test_path)
+            self.player.set_media(media)
+            self.player.play()
+            reply = QMessageBox.question(self, "麦克风测试", "录音回放中，麦克风是否正常？",
+                                         QMessageBox.Yes | QMessageBox.No)
+            self._stop_video()
+            if reply == QMessageBox.Yes:
+                try:
+                    os.remove(test_path)
+                except:
+                    pass
+                self.signal_update_display.emit("准备开始", "即将开始" + self._mode_text())
+                self._set_timer(3, self._start_first_selected_part)
+            else:
+                try:
+                    os.remove(test_path)
+                except:
+                    pass
+                self._mic_test()
+        else:
+            QMessageBox.warning(self, "错误", "录音失败，请检查设备")
+            self._mic_test()
+
+    def _player_play_then(self, media_path, callback):
+        """回放音频，结束后回调（自动清理临时文件）。"""
+        self.player.set_media(self._make_media(media_path))
+        self.player.play()
+        m = self.player.get_media()
+        duration = 0
+        try:
+            duration = m.get_duration()
+        except Exception:
+            duration = 0
+        # 至少给一个最短回放时间，避免 0 时长直接跳过
+        wait_ms = max(1500, int(duration) + 300) if duration and duration > 0 else 3000
+        self._set_timer(wait_ms / 1000.0, lambda: self._on_playback_done(media_path, callback))
+
+    def _on_playback_done(self, media_path, callback):
+        self._stop_video()
+        try:
+            os.remove(media_path)
+        except Exception:
+            pass
+        self.signal_update_display.emit("准备开始", "即将开始练习")
+        callback()
+
+    # ---- TTS 管理 ----
+    def _start_tts(self, text, signal=None, force_fallback=False):
+        """开始 TTS 朗读。force_fallback=True 时跳过 edge-tts，直接走系统 SAPI5。"""
+        self._cancel_tts()
+        self._tts_stop_event = threading.Event()
+        self._tts_thread = threading.Thread(target=self._tts_runner, args=(text, signal, force_fallback))
+        self._tts_thread.daemon = True
+        self._tts_thread.start()
+
+    def _speak_or_play_audio(self, text, audio_path, callback):
+        """优先播放音频文件，否则用 TTS 朗读文本；播放/朗读结束后触发 callback。
+
+        Part B / Part C 共用：有音频且文件存在 → VLC 播放（结束回调 _on_vlc_ended）；
+        否则 → TTS 朗读（结束回调 _on_tts_next）。"""
+        if audio_path and os.path.exists(audio_path):
+            self._audio_callback = callback
+            media = self._make_media(audio_path)
+            self.player.set_media(media)
+            self.player.play()
+            self.display_stack.setCurrentWidget(self.text_display)  # 只播声音，停在文本区
+            QTimer.singleShot(80, lambda: self._delayed_set_volume(100))
+        else:
+            if audio_path:
+                QMessageBox.warning(self, "警告", "音频文件不存在，改用 TTS 朗读")
+            self._set_tts_callback(callback)
+            self._start_tts(text, self.signal_tts_next)
+
+    # ---- 官方提示音播放 ----
+    def _play_prompt_audio(self, name, callback):
+        """播放 material/ 下的官方提示音 mp3，播完触发 callback。
+        文件不存在时静默跳过直接 callback（不弹窗）。"""
+        path = os.path.join("material", f"{name}.mp3")
+        resolved = _resolve_resource_file(path)
+        if resolved and os.path.isfile(resolved):
+            self._audio_callback = callback
+            media = self._make_media(resolved)
+            self.player.set_media(media)
+            self.player.play()
+            self.display_stack.setCurrentWidget(self.text_display)
+            QTimer.singleShot(80, lambda: self._delayed_set_volume(100))
+        else:
+            # 文件缺失时直接回调（不阻塞流程）
+            callback()
+
+    def _play_beep(self, callback):
+        """播放滴声 di.mp3，结束后触发 callback。文件不存在则直接 callback。
+
+        注意：滴声是「过场提示音」，播放时**不强制切换画面**——
+        这样 Part A 模仿跟读在滴声期间仍能保持视频画面，
+        Part B/C 也能保留滴声前已显示的录音准备界面。
+
+        触发机制：用 di.mp3 的 duration 定时器直接触发 callback（di.mp3 只有
+        约 470ms，真机 VLC 对这种极短音频的 EndReached 事件经常不发/延迟，
+        纯靠事件会卡住，所以改用纯定时器 100% 兜底）。"""
+        path = os.path.join("material", "di.mp3")
+        resolved = _resolve_resource_file(path)
+        if resolved and os.path.isfile(resolved):
+            # 防重入：callback 只触发一次
+            fired = [False]
+            def fire_once():
+                if not fired[0]:
+                    fired[0] = True
+                    callback()
+            self.player.set_media(self._make_media(resolved))
+            self.player.play()
+            QTimer.singleShot(80, lambda: self._delayed_set_volume(100))
+            # 用 duration + 缓冲 定时器触发回调（不依赖 EndReached 事件）
+            try:
+                duration_ms = self.player.get_media().get_duration()
+            except Exception:
+                duration_ms = 0
+            if duration_ms and duration_ms > 0:
+                wait_ms = max(800, int(duration_ms) + 300)
+            else:
+                wait_ms = 1000  # 拿不到时长时给 1s 兜底
+            QTimer.singleShot(wait_ms, fire_once)
+        else:
+            callback()
+
+    def _tts_runner(self, text, signal, force_fallback=False):
+        # 优先 edge-tts（神经网络语音）：生成 mp3 后回主线程用 VLC 播放，播完再触发 signal
+        if not force_fallback and EDGE_TTS_AVAILABLE and text and text.strip():
+            try:
+                os.makedirs(TTS_EDGE_DIR, exist_ok=True)
+            except Exception:
+                pass
+            out = os.path.join(TTS_EDGE_DIR, f"tts_{int(time.time()*1000)}_{threading.get_ident()}.mp3")
+            if tts_generate_audio(text, out):
+                self._tts_done_signal = signal
+                self._tts_tmp_file = out
+                self.signal_tts_file_ready.emit(out)
+                return
+        # 回退：系统 SAPI5 逐句朗读
+        tts_speak_blocking(text, self._tts_stop_event)
+        if signal:
+            signal.emit()
+
+    def _on_tts_file_ready(self, path):
+        """主线程：播放 edge-tts 生成的音频，播完由 _on_vlc_ended 触发 _tts_file_done。"""
+        if self._teardown_done:
+            return
+        if not path or not os.path.exists(path):
+            # 文件异常，直接触发原信号继续流程
+            sig = getattr(self, "_tts_done_signal", None)
+            self._tts_done_signal = None
+            if sig:
+                sig.emit()
+            return
+        self._audio_callback = self._tts_file_done
+        media = self._make_media(path)
+        self.player.set_media(media)
+        self.player.play()
+        self.display_stack.setCurrentWidget(self.text_display)  # 只播声音，停在文本区
+        QTimer.singleShot(80, lambda: self._delayed_set_volume(100))
+
+    def _tts_file_done(self):
+        """edge-tts 音频播放完毕：清理临时文件，触发原 signal 继续流程。"""
+        sig = getattr(self, "_tts_done_signal", None)
+        self._tts_done_signal = None
+        tmp = getattr(self, "_tts_tmp_file", None)
+        self._tts_tmp_file = None
+        if tmp:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+        if sig:
+            sig.emit()
+
+    def _cancel_tts(self):
+        if self._tts_stop_event:
+            self._tts_stop_event.set()
+            self._tts_stop_event = None
+
+    def _set_tts_callback(self, callback):
+        self._tts_next_callback = callback
+        try:
+            self.signal_tts_next.disconnect()
+        except:
+            pass
+        self.signal_tts_next.connect(self._on_tts_next)
+
+    def _on_tts_next(self):
+        if self._teardown_done:
+            return
+        if self._tts_next_callback:
+            cb = self._tts_next_callback
+            self._tts_next_callback = None
+            cb()
+
+    # ---------- Part A ----------
+    def _run_part_a(self):
+        self._current_phase = "partA"
+        self._step_index = 0
+        video_path = self.pkg.partA_video_path
+        if not video_path or not os.path.exists(video_path):
+            QMessageBox.critical(self, "错误", "Part A 视频文件不存在")
+            self.abort_exam()
+            return
+        # 先给一个兜底时长，避免解析卡住时界面无响应
+        self.video_duration = 60
+        self._parse_media = self._make_media(video_path)
+        # 异步解析，不阻塞主线程消息循环
+        self._parse_media.parse_with_options(vlc.MediaParseFlag.local, 5000)
+        self.signal_update_display.emit("加载视频", "正在解析视频时长...")
+        self._parse_attempts = 0
+        self._parse_timer = QTimer(self)
+        self._parse_timer.timeout.connect(self._check_video_duration)
+        self._parse_timer.start(200)
+
+    def _check_video_duration(self):
+        if self._teardown_done:
+            self._stop_parse_timer()
+            return
+        self._parse_attempts += 1
+        dur_ms = -1
+        try:
+            dur_ms = self._parse_media.get_duration()
+        except Exception:
+            pass
+        if dur_ms > 0 or self._parse_attempts >= 25:  # 解析成功或 5 秒超时
+            if dur_ms > 0:
+                dur_sec = dur_ms / 1000.0
+                self.video_duration = int(dur_sec) if dur_sec == int(dur_sec) else int(dur_sec) + 1
+            self._stop_parse_timer()
+            self._parse_media = None
+            self._exec_partA_step()
+
+    def _stop_parse_timer(self):
+        if getattr(self, "_parse_timer", None):
+            self._parse_timer.stop()
+            try:
+                self._parse_timer.deleteLater()
+            except Exception:
+                pass
+            self._parse_timer = None
+
+    def _exec_partA_step(self):
+        self._update_nav_buttons()  # 每步切换时刷新导航按钮（上一步/跳过可用态）
+        idx = self._step_index
+        # 进入非视频步骤时，确保视频已停并隐藏（修复离开视频步骤视频仍残留的问题）
+        if idx not in (1, 7):
+            self._stop_video()
+        if idx == 0:
+            # 开头介绍：播放官方录音（含中英双语）
+            self.signal_update_display.emit("Part A Reading Aloud",
+                "In this part, you are required to watch a video clip and read after the speaker.")
+            self._play_prompt_audio("PartA-Intro", self._next_partA_step)
+        elif idx == 1:
+            self.signal_update_display.emit("观看视频", "请观看视频并注意发音")
+            self._play_video_full()
+            self._set_timer(self.video_duration)
+        elif idx == 2:
+            # 准备时问：播放官方录音（含中文"现在你有一分钟的准备时间..."）
+            self.signal_update_display.emit("练习提示", "Now you have one minute to practice reading")
+            self._play_prompt_audio("PartA-2", self._next_partA_step)
+        elif idx == 3:
+            self.signal_update_display.emit("阅读文本", "请默读准备 (60秒)")
+            self._show_text(self.pkg.partA_hidden_text or "(无原文)")
+            self._set_timer(60)
+        elif idx == 4:
+            # 听原文前提示：播放官方录音（"下面听原文，再听一遍录音..."）
+            # 只显示提示文字，不提前展示原文（原文在下一步 idx=5 才出现）
+            self.signal_update_display.emit("听原文前提示", "下面听原文，再听一遍录音。\nNow listen to the speaker once again...")
+            self._play_prompt_audio("PartA-3", self._next_partA_step)
+        elif idx == 5:
+            self.signal_update_display.emit("听录音", "听视频原声，可看文本")
+            self._show_text(self.pkg.partA_hidden_text or "(无原文)")
+            self._play_video_audio_only()
+            self._set_timer(self.video_duration)
+        elif idx == 6:
+            # 录音前提示：播放官方录音（含中文"现在开始录音"+英文）
+            self.signal_update_display.emit("录音准备", "Now read as the speaker in the video")
+            self._play_prompt_audio("PartA-4", self._next_partA_step)
+        elif idx == 7:
+            # 录音：先播滴声再开始录音
+            self.signal_update_display.emit("模仿朗读", "请看着视频和字幕跟读")
+            self._play_beep(lambda: self._begin_partA_record())
+        else:
+            self._stop_video()
+            self._stop_recording()
+            self.session.partA_recording = self._save_recording("PartA")
+            self._advance_after_part("partA")
+
+    def _begin_partA_record(self):
+        """Part A 开始录音（滴声结束后调用）。"""
+        self._play_video_silent()
+        self._start_recording()
+        self._set_timer(self.video_duration)
+
+    def _next_partA_step(self):
+        self._step_index += 1
+        self._exec_partA_step()
+
+    # ---------- Part B ----------
+    def _run_part_b(self):
+        self._current_phase = "partB"
+        self._b_step = 0
+        self._audio_callback = None
+        # 把整个 Part B 拆成一系列「机读 / 录音 / 准备」小点，
+        # 每个点都是一次「跳过 / 上一步」的目标，保证只前进/后退一步。
+        self._b_moments = []
+        # 0: 开头介绍 — 播放官方录音（完整文本，中英双语）
+        self._b_moments.append({"t": "prompt", "main": "Part B Role Play",
+                                "sub": "In this part, you are required to act as a role and complete the following tasks.",
+                                "audio": "PartB-Intro"})
+        self._b_moments.append({"t": "timer", "sec": 30, "main": "情景介绍", "sub": self.pkg.partB_situation or "(无)"})
+        self._b_moments.append({"t": "tts", "main": "听对话", "sub": self.pkg.partB_situation or "(情景)",
+                                "text": self.pkg.partB_listening_text,
+                                "audio": self.pkg.partB_listening_audio})
+        # 提问引导 — 播放官方录音（"下面你用英语提出三个问题..."）
+        self._b_moments.append({"t": "prompt", "main": "提问引导",
+                                "sub": "下面你用英语提出三个问题。\nPlease get ready to ask three questions in English.",
+                                "audio": "PartB-1"})
+        for idx, q in enumerate(self.pkg.partB_three_questions):
+            self._b_moments.append({"t": "prep_q", "idx": idx, "main": f"准备提问 {idx+1}", "sub": q['cn_prompt']})
+            # 提问录音：先播滴声再开始录音
+            self._b_moments.append({"t": "record_q", "idx": idx, "main": f"请提问 {idx+1}", "sub": q['cn_prompt']})
+            # 电脑回答：仿 C 拆成「播→过渡gap(5s)→重播」三页（与 C-monologue1/gap/monologue2 一致）
+            self._b_moments.append({"t": "tts", "main": "电脑回答", "sub": "",
+                                    "text": q['en_answer'], "audio": q.get('en_audio')})
+            self._b_moments.append({"t": "timer", "sec": 5, "main": "电脑回答", "sub": ""})  # 静音gap：显示保持与上一页(电脑回答)一致，不显示(过渡)
+            self._b_moments.append({"t": "tts", "main": "电脑回答", "sub": "",
+                                    "text": q['en_answer'], "audio": q.get('en_audio')})
+        # 回答引导 — 播放官方录音（对整段回答的总引导）
+        self._b_moments.append({"t": "prompt", "main": "回答引导",
+                                "sub": "下面你用英语回答五个问题。\nPlease get ready to answer five questions in English.",
+                                "audio": "PartB-2"})
+        for idx, a in enumerate(self.pkg.partB_five_answers):
+            self._b_moments.append({"t": "tts", "main": f"请听第{idx+1}个问题",
+                                    "sub": f"现在请准备回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}.",
+                                    "text": a['en_question'], "audio": a.get('q_audio')})
+            self._b_moments.append({"t": "tts", "main": f"请听第{idx+1}个问题",
+                                    "sub": f"现在请准备回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}.",
+                                    "text": a['en_question'], "audio": a.get('q_audio')})
+            self._b_moments.append({"t": "timer", "sec": 10, "main": f"请听第{idx+1}个问题",
+                                    "sub": f"现在请准备回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}."})
+            # 回答录音：先播滴声再开始录音
+            self._b_moments.append({"t": "record_a", "idx": idx,
+                                    "main": f"请回答第{idx+1}个问题",
+                                    "sub": f"现在请回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}."})
+        self._exec_partB_step()
+
+    def _exec_partB_step(self, replay=False):
+        self._update_nav_buttons()  # 每步切换时刷新导航按钮
+        if self._b_step >= len(self._b_moments):
+            self._advance_after_part("partB")
+            return
+        self._exec_b_moment(self._b_moments[self._b_step], replay)
+
+    def _exec_b_moment(self, m, replay=False):
+        t = m["t"]
+        if t == "prompt":
+            # 播放官方提示音 mp3（PartB-Intro / PartB-1 / PartB-2）
+            self.signal_update_display.emit(m["main"], m.get("sub", ""))
+            self._play_prompt_audio(m["audio"], self._next_partB_step)
+        elif t == "tts":
+            self.signal_update_display.emit(m["main"], m.get("sub", ""))
+            self._speak_or_play_audio(m.get("text", ""), m.get("audio"), self._next_partB_step)
+        elif t == "timer":
+            self.signal_update_display.emit(m["main"], m.get("sub", ""))
+            self._set_timer(m["sec"], callback=self._next_partB_step)
+        elif t == "prep_q":
+            self.signal_update_display.emit(m["main"], m["sub"])
+            self._set_timer(20, callback=self._next_partB_step)
+        elif t == "record_q":
+            idx = m["idx"]
+            if replay:
+                # 重进 / 上一步 落到提问录音点：先重播题目（准备提示），再滴声→录音
+                self.signal_update_display.emit(f"准备提问 {idx+1}", m["sub"])
+                self._set_timer(20, callback=lambda i=idx: self._play_beep(lambda ii=i: self._begin_b_record_now(ii, "q")))
+            else:
+                # 正常流程：先切到「请提问」录音界面，再播滴声→开始录音
+                self.signal_update_display.emit(m["main"], m["sub"])
+                self._play_beep(lambda i=idx: self._begin_b_record_now(i, "q"))
+        elif t == "record_a":
+            idx = m["idx"]
+            if replay:
+                # 先重播问题（请听第n个问题 + 重复提问），再滴声→录音
+                self.signal_update_display.emit(f"请听第{idx+1}个问题",
+                                                f"现在请准备回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}.")
+                self._speak_or_play_audio(
+                    self.pkg.partB_five_answers[idx]['en_question'],
+                    self.pkg.partB_five_answers[idx].get('q_audio'),
+                    lambda i=idx: self._replay_question_then_record(i))
+            else:
+                # 正常流程：先切到「请回答第n个问题」录音界面，再播滴声→开始录音
+                self.signal_update_display.emit(m["main"], m["sub"])
+                self._play_beep(lambda i=idx: self._begin_b_record_now(i, "a"))
+
+    def _finish_b_record(self, idx, kind):
+        self._stop_recording()
+        if kind == "q":
+            self.session.partB_slots[f"PartB_Q{idx+1}"] = self._save_recording(f"PartB_Q{idx+1}")
+        else:
+            self.session.partB_slots[f"PartB_A{idx+1}"] = self._save_recording(f"PartB_A{idx+1}")
+        self._next_partB_step()
+
+    def _begin_b_record_now(self, idx, kind):
+        """Part B 滴声结束后实际开始录音（开始录音并计时 10 秒）。"""
+        if kind == "q":
+            self.signal_update_display.emit(f"请提问 {idx+1}", self.pkg.partB_three_questions[idx]['cn_prompt'])
+        else:
+            self.signal_update_display.emit(f"请回答第{idx+1}个问题",
+                                            f"现在请回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}.")
+        self._start_recording()
+        self._set_timer(10, callback=lambda i=idx, k=kind: self._finish_b_record(i, k))
+
+    def _begin_b_record(self, idx, kind):
+        """兼容入口：直接开始录音（无滴声）。内部流程仍走 _begin_b_record_now。"""
+        self._begin_b_record_now(idx, kind)
+
+    def _replay_question_then_record(self, idx):
+        """重播问题第二段（重复提问），结束后开始录音。"""
+        self.signal_update_display.emit(f"请听第{idx+1}个问题",
+                                        f"现在请准备回答第{idx+1}个问题。\nPlease get ready to answer question {idx+1}.")
+        self._speak_or_play_audio(
+            self.pkg.partB_five_answers[idx]['en_question'],
+            self.pkg.partB_five_answers[idx].get('q_audio'),
+            lambda i=idx: self._begin_b_record(i, "a"))
+
+    def _next_partB_step(self):
+        self._b_step += 1
+        self._exec_partB_step()
+
+    # ---------- Part C ----------
+    def _run_part_c(self):
+        self._current_phase = "partC"
+        self._c_step = 0
+        self._audio_callback = None
+        self._exec_partC_step()
+
+    def _exec_partC_step(self, replay=False):
+        self._update_nav_buttons()  # 每步切换时刷新导航按钮
+        s = self._c_step
+        # 离开“听独白”步骤时停掉播放器，避免残留视频
+        if s not in (2, 4):
+            self._stop_video()
+        if s == 0:
+            # 开头介绍：播放官方录音（中英双语）
+            self.signal_update_display.emit("Part C Retelling",
+                "In this part, you are required to listen to a monologue and retell what you have heard.")
+            self._play_prompt_audio("PartC-Intro", self._next_partC_step)
+        elif s == 1:
+            text = f"梗概：{self.pkg.partC_summary}\n关键词：{self.pkg.partC_keywords}"
+            self.signal_update_display.emit("阅读梗概和关键词", text)
+            self._set_timer(15)
+        elif s == 2 or s == 4:
+            text = f"梗概：{self.pkg.partC_summary}\n关键词：{self.pkg.partC_keywords}"
+            self.signal_update_display.emit("听独白", text)
+            if self.pkg.partC_source_type == "tts":
+                self._set_tts_callback(self._next_partC_step)
+                self._start_tts(self.pkg.partC_tts_text, self.signal_tts_next)
+            else:
+                if self.pkg.partC_audio_path and os.path.exists(self.pkg.partC_audio_path):
+                    self._audio_callback = self._next_partC_step
+                    media = self._make_media(self.pkg.partC_audio_path)
+                    self.player.set_media(media)
+                    self.player.play()
+                    self.display_stack.setCurrentWidget(self.text_display)  # 只播声音，停在文本区
+                    QTimer.singleShot(80, lambda: self._delayed_set_volume(100))
+                else:
+                    QMessageBox.warning(self, "警告", "Part C 音频文件不存在")
+                    self._next_partC_step()
+        elif s == 3:
+            self._set_timer(5, self._next_partC_step)
+        elif s == 5:
+            self.signal_update_display.emit("准备复述 (60秒)", "")
+            self._set_timer(60)
+        elif s == 6:
+            # 复述前提示：播"现在开始复述"官方录音（pre 页）
+            self.signal_update_display.emit("录音准备",
+                "请用你自己的话复述刚才听到的故事。\nRetell the story in your own words.")
+            self._play_prompt_audio("PartC", self._next_partC_step)
+        elif s == 7:
+            # 复述录音：滴声 → 开始录音（record 页，截图2）
+            self.signal_update_display.emit("请复述故事", "")
+            self._play_beep(self._begin_c_record_now)
+        else:
+            self._stop_recording()
+            self.session.partC_recording = self._save_recording("PartC")
+            self.signal_finished.emit()
+
+    def _on_vlc_playing(self):
+        """（主线程）VLC 真正起播 —— VLC 会在这时重建视频子窗口，重新禁用其输入。
+
+        ⚠️ 这是 `signal_vlc_playing` 的槽，**必须**跑在主线程：
+        VLC 的 MediaPlayerPlaying 事件由 VLC 内部线程发出，回调里不能直接碰 Qt。"""
+        QTimer.singleShot(50, self._disable_vlc_input)
+
+    def _on_vlc_ended(self):
+        """（主线程）VLC 播放结束。
+
+        ⚠️ 由 `signal_vlc_ended` 从 VLC 线程转发过来。原实现在 VLC 线程里直接
+        `QTimer.singleShot(0, cb)`，会创建"挂在 VLC 线程上的定时器"（该线程没有 Qt
+        事件循环），既刷 `QObject::startTimer ...` 警告，又可能让后续步骤在错误线程
+        操作界面而闪退。现在统一由主线程处理。
+        """
+        if self._teardown_done:
+            return
+        # 避免在准备阶段等非视频阶段触发异常回调
+        if not self._exam_active:
+            return
+        # Part B 机读音频 / Part C 独白音频 / edge-tts 朗读音频 播放完毕 → 触发下一步
+        # （_audio_callback 仅在“只播音频”的路径被设置，视频播放结束不会误触发）
+        if self._audio_callback:
+            cb = self._audio_callback
+            self._audio_callback = None
+            QTimer.singleShot(0, cb)
+
+    def _next_partC_step(self):
+        self._c_step += 1
+        self._exec_partC_step()
+
+    def _begin_c_record_now(self):
+        """Part C 滴声结束后实际开始复述录音（120 秒）。"""
+        self.signal_update_display.emit("请复述故事", "")
+        self._start_recording()
+        self._set_timer(120)
+
+    def _begin_c_record(self):
+        """兼容入口：直接开始 Part C 复述录音（无提示音/滴声）。"""
+        self._begin_c_record_now()
+
+    # ---------- 计时器 ----------
+    def _set_timer(self, seconds, callback=None):
+        self._phase_end_time = time.time() + seconds
+        self._timer_callback = callback
+        self.countdown_label.show()
+        self.timer.start(100)
+
+    def _on_tick(self):
+        if self._teardown_done:
+            return
+        remaining = max(0, int(self._phase_end_time - time.time()))
+        self.countdown_label.setText(f"剩余时间：{remaining} 秒")
+        if time.time() >= self._phase_end_time:
+            self.timer.stop()
+            self.countdown_label.hide()
+            if self._timer_callback:
+                cb = self._timer_callback
+                self._timer_callback = None
+                cb()
+            else:
+                self._next_step_default()
+
+    def _next_step_default(self):
+        if self._current_phase == "partA":
+            self._next_partA_step()
+        elif self._current_phase == "partB":
+            self._next_partB_step()
+        elif self._current_phase == "partC":
+            self._next_partC_step()
+
+    # ---------- 录音点导航（跳过 / 上一步） ----------
+    def _cur_step(self):
+        if self._current_phase == "partA":
+            return self._step_index
+        if self._current_phase == "partB":
+            return self._b_step
+        if self._current_phase == "partC":
+            return self._c_step
+        return -1
+
+    def _next_checkpoint(self, phase, step):
+        """返回下一个「机读 / 录音 / 环节」点——只前进一步，绝不跳过多段。"""
+        if phase == "partA":
+            if step < 6:
+                return ("partA", step + 1)
+            return ("partB", 0)
+        if phase == "partB":
+            moments = getattr(self, "_b_moments", [])
+            if step < len(moments) - 1:
+                return ("partB", step + 1)
+            return ("partC", 0)
+        if phase == "partC":
+            if step < 7:
+                return ("partC", step + 1)
+            return None
+        return None
+
+    def _prev_checkpoint(self, phase, step):
+        """返回上一个检查点——用 H 列（_PREV_CHECKPOINTS）往上找最近的 ●。
+
+        规则（来自 Excel 列 H「上一步落点」）：
+          ↑ = 跳到往上最近的 ● 标记页
+          无 = 录音中，不可上一步
+        """
+        return self._find_prev_checkpoint(self._PREV_CHECKPOINTS, phase, step)
+
+    def _go_to_checkpoint(self, cp, replay=False):
+        phase, step = cp
+        if phase == "partA":
+            self._current_phase = "partA"
+            self._step_index = step
+            self._exec_partA_step()
+        elif phase == "partB":
+            if step == 0 and self._current_phase != "partB":
+                self._run_part_b()
+            else:
+                self._current_phase = "partB"
+                self._b_step = step
+                self._exec_partB_step(replay)
+        else:
+            if step == 0 and self._current_phase != "partC":
+                self._run_part_c()
+            else:
+                self._current_phase = "partC"
+                self._c_step = step
+                self._exec_partC_step(replay)
+
+    def _finalize_current_recording(self):
+        """若当前正在录音，则保存（不丢弃），以便 跳过/上一步 不丢失已录内容。"""
+        if not self._is_recording:
+            return
+        self._stop_recording()
+        phase = self._current_phase
+        if phase == "partA":
+            self.session.partA_recording = self._save_recording("PartA")
+        elif phase == "partB":
+            moments = getattr(self, "_b_moments", [])
+            if 0 <= self._b_step < len(moments):
+                m = moments[self._b_step]
+                if m["t"] == "record_q":
+                    self.session.partB_slots[f"PartB_Q{m['idx']+1}"] = self._save_recording(f"PartB_Q{m['idx']+1}")
+                elif m["t"] == "record_a":
+                    self.session.partB_slots[f"PartB_A{m['idx']+1}"] = self._save_recording(f"PartB_A{m['idx']+1}")
+        elif phase == "partC":
+            self.session.partC_recording = self._save_recording("PartC")
+
+    def _cleanup_for_nav(self):
+        """跳转换段前，立即清理当前声画/计时/录音（不显示缓冲）。"""
+        self.timer.stop()
+        self.countdown_label.hide()
+        self._timer_callback = None
+        self._cancel_tts()
+        self._tts_next_callback = None
+        try:
+            self.signal_tts_next.disconnect()
+        except Exception:
+            pass
+        self._finalize_current_recording()
+        self._stop_video()
+        self._audio_callback = None
+        # 清理未播完的 edge-tts 临时音频
+        self._tts_done_signal = None
+        tmp = getattr(self, "_tts_tmp_file", None)
+        self._tts_tmp_file = None
+        if tmp:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+
+    def _skip_current(self):
+        """跳过：跳到下一个录音点 / 跳过开头试音（0.4s 缓冲，不显示）。练习/专项可用。"""
+        if self.mode == "exam":
+            return
+        if self._current_phase not in ("mic", "partA", "partB", "partC"):
+            return
+        if self._navigating:
+            return
+        self._navigating = True
+        self._cleanup_for_nav()
+        QTimer.singleShot(400, self._skip_advance)
+
+    def _skip_advance(self):
+        try:
+            if self._teardown_done or not self._exam_active:
+                return
+            if self._current_phase == "mic":
+                # 练习/专项：跳过开头试音，直接进入首个选定篇目
+                self._stop_recording()
+                self._stop_video()
+                self._start_first_selected_part()
+                return
+            # 按 Excel 第 9 列「跳过/结束录音」落点表前进
+            target = self._SKIP_NEXT.get((self._current_phase, self._cur_step()))
+            if target is None:
+                # 兜底：沿用旧逻辑前进一步
+                target = self._next_checkpoint(self._current_phase, self._cur_step())
+            # 专项训练：跳过目标若落在未选篇目上，顺延到下一个选定篇目，或结束
+            if isinstance(target, tuple) and not self._phase_selected(target[0]):
+                nxt = self._next_selected_part_after(target[0])
+                target = (nxt, 0) if nxt else "FINISH"
+            if target is None or target == "FINISH":
+                # 已是最后一页（C-record 结束录音批改），结束考试
+                # 当前录音已在 _cleanup_for_nav 中保存
+                self.signal_finished.emit()
+                return
+            self._go_to_checkpoint(target)
+        finally:
+            self._navigating = False
+
+    def _prev_current(self):
+        """上一步：跳到上一个检查点重新开始。练习/专项可用。
+        准备阶段/录音中不可用（按钮已置灰，此处为守卫）。"""
+        if self.mode == "exam":
+            return
+        if self._current_phase not in ("partA", "partB", "partC"):
+            return
+        if getattr(self, "_is_recording", False):
+            return
+        if self._navigating:
+            return
+        self._navigating = True
+        self._cleanup_for_nav()
+        QTimer.singleShot(400, self._prev_advance)
+
+    def _prev_advance(self):
+        try:
+            if self._teardown_done or not self._exam_active:
+                return
+            prev = self._prev_allowed_target(self._current_phase, self._cur_step())
+            if prev is None:
+                return          # 已是首个选定篇目的开头，无法回退
+            self._go_to_checkpoint(prev, replay=True)
+        finally:
+            self._navigating = False
+
+    @pyqtSlot(str, str)
+    def _update_display(self, main, sub):
+        self.main_label.setText(main)
+        self.sub_label.setText(sub)
+        if "观看视频" in main or "模仿朗读" in main:
+            self.display_stack.setCurrentWidget(self.video_container)
+        else:
+            self.display_stack.setCurrentWidget(self.text_display)
+            self.text_display.setPlainText(sub if sub else main)
+
+    # ---------- 视频控制（VLC 嵌入 Qt 的 video_frame，禁用点击输入）----------
+    def _make_media(self, path_or_mrl):
+        """创建 VLC media，并在**媒体级**关闭硬件解码。
+
+        ⚠️ 必须加在 media 上：`vlc.Instance(["--avcodec-hw=none"])` 对 VLC 3.0 的 D3D11VA
+        硬解**实测无效**（日志里仍出现 "Using D3D11VA ... for hardware decoding"），
+        只有 media 级选项 `:avcodec-hw=none` 才真正禁用。
+        启用硬解时，停止/解绑嵌入窗口会持续刷
+        `h264 get_buffer() failed / thread_get_buffer() failed`，
+        并且 D3D11 硬解与 Qt 的 D3D 设备争用，是「播放/切页未响应」的已知诱因。
+        """
+        m = self.vlc_instance.media_new(path_or_mrl)
+        try:
+            m.add_option(":avcodec-hw=none")
+        except Exception:
+            pass
+        return m
+
+    def _start_vlc_playback(self, media, silent=False, show_window=True):
+        """统一播放：把 VLC 视频嵌入到 Qt 的 video_frame 控件里（set_hwnd）。
+        show_window=True 时切换到视频区显示；False 时只播声音，停留在文本区。
+        播放后通过 _disable_vlc_input 禁用 VLC 视频子窗口的鼠标/键盘输入，
+        这是修复"点击视频导致主线程卡死/未响应"的关键。"""
+        if self._teardown_done:
+            return
+        # ⚠️ 全程"媒体级"重活（停旧媒体 → set_media → play → 建 vout）都丢到**后台线程**，
+        # 主线程只做极快的 set_hwnd / setCurrentWidget / 调度定时器，绝不被 VLC 阻塞。
+        # 世代号：本次播放唯一标识；任何更新的播放/停止都会让它失效，杜绝过期动作踩踏新播放。
+        self._vlc_gen = getattr(self, "_vlc_gen", 0) + 1
+        my_gen = self._vlc_gen
+        if show_window and self.display_stack.currentWidget() != self.video_container:
+            self.display_stack.setCurrentWidget(self.video_container)
+        # 始终把 VLC 绑定到 video_frame —— 即使该控件当前被隐藏（如 Part A「听录音」：
+        # 只想要声音、停留在文本区，video_frame 所在的 video_container 未显示）。
+        # 只要 VLC 手里有一个嵌入窗口可画，它就**绝不会**另开独立的
+        # 「VLC (Direct3D11 output)」窗口；此时画面被画进隐藏控件里，肉眼看不见。
+        # （此前用 isVisible() 判断，隐藏时不绑定 → 一旦 _stop_video 解绑过，就会冒出独立窗口。）
+        #
+        # ⚠️ 但只在**句柄真的变了**时才 set_hwnd（2026-09-26）：
+        # 每次播放都重复 set_hwnd 会让 VLC 销毁并重建 vout（实测一次播放建 2~3 个 vout，
+        # 每个都要新建 D3D11 设备 + surface 池），vout 越多 stop() 收尾越慢（实测最高 1273ms）。
+        # 句柄没变时跳过，VLC 会复用现有 vout（日志里表现为 "reusing provided vout"）。
+        # `_vlc_bound_hwnd` 记的是 **VLC 实际绑着的**句柄，与 `_vlc_parent_hwnd`（仅用于
+        # 枚举子窗口、stop 后置 None）分开记：stop 后 VLC 仍然绑着同一个 hwnd，不能误判成"需要重绑"。
+        try:
+            hwnd = int(self.video_frame.winId())
+            # 简单验证句柄是否有效（非零且窗口存在）
+            if sys.platform == "win32" and hwnd:
+                if ctypes.windll.user32.IsWindow(hwnd):
+                    self._vlc_parent_hwnd = hwnd
+                    if hwnd != getattr(self, "_vlc_bound_hwnd", None):
+                        self.player.set_hwnd(hwnd)
+                        self._vlc_bound_hwnd = hwnd
+                else:
+                    self._vlc_parent_hwnd = None
+            else:
+                self._vlc_parent_hwnd = hwnd if hwnd else None
+        except Exception:
+            self._vlc_parent_hwnd = None
+        vol = 0 if silent else 100
+        # 所有"重"动作统一一个后台线程**顺序**执行：先停干净旧媒体 → 装新媒体 → play（建 vout）。
+        # 旧写法是"停"和"播"分属两个线程，stop 线程的 set_media(None) 会撞掉新播放（双解码器/静音失效）；
+        # 合进一个 worker 后顺序有保证，且用 my_gen 防止更新的播放/停止接管后还残留动作。
+        def _run():
+            try:
+                if my_gen != self._vlc_gen:
+                    return  # 已有更新的播放/停止接管，放弃本次
+                # 1) 若还在播旧媒体，先停干净（线程内 stop，主线程不死锁；同 _stop_video 思路）
+                try:
+                    if self.player.get_state() in (vlc.State.Playing, vlc.State.Paused):
+                        self.player.audio_set_volume(0)
+                        self.player.stop()
+                        self.player.set_media(None)
+                except Exception:
+                    pass
+                if my_gen != self._vlc_gen:
+                    return
+                # 2) 装新媒体并起播（play 触发 vout 创建，在后台线程不卡 GUI）
+                self.player.set_media(media)
+                self.player.play()
+                try:
+                    self.player.audio_set_volume(vol)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        threading.Thread(target=_run, daemon=True).start()
+        # play() 之后立刻设音量会被 VLC 起播流程覆盖，延后 80ms 再设一次；
+        # 另加 600ms 兜底，确保后台线程起播较晚时音量（尤其 silent 静音）仍生效。
+        QTimer.singleShot(80, lambda v=vol: self._delayed_set_volume(v))
+        QTimer.singleShot(600, lambda v=vol: self._delayed_set_volume(v))
+        # VLC 在 play() 之后才创建视频子窗口，稍后禁用其输入（输入禁用也在后台线程，见 _disable_vlc_input）
+        QTimer.singleShot(150, self._disable_vlc_input)
+
+    def _delayed_set_volume(self, vol):
+        """播放后延迟设音量（teardown 守卫）。
+
+        play() 之后立刻设音量会被 VLC 起播流程覆盖，所以延后 80ms 再设一次。"""
+        if self._teardown_done:
+            return
+        try:
+            self.player.audio_set_volume(vol)
+        except Exception:
+            pass
+
+    def _disable_vlc_input(self):
+        """安排一次「禁用 VLC 视频子窗口输入」——**真正的活放在后台线程**。
+
+        ⚠️ 真正的活必须放后台线程：**不要搬回主线程**。
+        它对 VLC 的视频子窗口调 `SetWindowLongW`，而那个窗口属于 VLC 的 **vout 线程**；
+        跨线程 `SetWindowLongW` 内部是同步 `SendMessage`，必须等 vout 线程处理完消息才返回。
+        1080p 视频起播时 VLC 会连建 2~3 次 vout（每次都要新建 D3D11 设备 + 分配 surface 池），
+        vout 线程此时忙 → 主线程会死等 → 窗口「未响应」。
+        放到 daemon 线程后，最坏情况只是这个后台线程卡住，界面完全不受影响。
+        （注：2026-09-19 那次「返回主页未响应」的元凶不是它，是 `_stop_video` 里的
+        `stop()`，已单独修；这里的线程化是同类风险的预防，一并保留。）
+        """
+        if self._teardown_done:
+            return
+        if sys.platform != "win32" or not self._vlc_parent_hwnd:
+            return
+        parent = self._vlc_parent_hwnd
+        # 已有一次在处理中就不再起新线程（也顺带防止后台线程堆积）
+        if getattr(self, "_vlc_input_busy", False):
+            return
+        self._vlc_input_busy = True
+
+        def _run():
+            try:
+                self._disable_vlc_input_worker(parent)
+            except Exception:
+                pass
+            finally:
+                self._vlc_input_busy = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _disable_vlc_input_worker(self, parent_hwnd):
+        """后台线程：给 VLC 的视频子窗口加 WS_DISABLED，让"点击视频"无效。"""
+        # 再次验证父窗口句柄是否仍然有效（阶段切换后可能已销毁）
+        try:
+            if not ctypes.windll.user32.IsWindow(parent_hwnd):
+                return
+        except Exception:
+            return
+        try:
+            user32 = ctypes.windll.user32
+            GWL_STYLE = -16
+            WS_DISABLED = 0x08000000
+            cls_buf = ctypes.create_unicode_buffer(128)
+            results = []
+            EnumChildProc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+
+            @EnumChildProc
+            def enum_child(hwnd, lparam):
+                user32.GetClassNameW(hwnd, cls_buf, 128)
+                name = cls_buf.value
+                if name and name.startswith("VLC"):  # VLC video output / VLC video main ...
+                    results.append(hwnd)
+                return 1
+
+            user32.EnumChildWindows(parent_hwnd, enum_child, 0)
+            for hwnd in results:
+                style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+                if not (style & WS_DISABLED):
+                    user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_DISABLED)
+        except Exception:
+            pass
+
+    def _play_video_full(self):
+        media = self._make_media(self.pkg.partA_video_path)
+        self._start_vlc_playback(media, silent=False, show_window=True)
+
+    def _play_video_audio_only(self):
+        media = self._make_media(self.pkg.partA_video_path)
+        self._start_vlc_playback(media, silent=False, show_window=False)
+        self.display_stack.setCurrentWidget(self.text_display)
+
+    def _play_video_silent(self):
+        media = self._make_media(self.pkg.partA_video_path)
+        self._start_vlc_playback(media, silent=True, show_window=True)
+
+    def _stop_video(self):
+        """停止 VLC 播放（返回主页 / 上一步 / 跳过 都会走这里）。
+
+        ⚠️ 一、`set_hwnd(0)` 绝对不要调（2026-09-19 实测推翻旧铁律）
+          旧注释说"先 set_hwnd(0) 解绑再 stop()"，实测是错的：Windows 上 `set_hwnd(0)`
+          **并不会解绑**，VLC 把 0 当成 HWND 0（桌面），于是**销毁并重建整个 vout**
+          （D3D11 设备 + surface 池）。实测 stop() 耗时：调 set_hwnd(0) 1552ms vs 不调 486ms。
+
+        ⚠️ 二、`stop()` 绝不能在 GUI（主）线程调用（2026-09-19 11:12 抓栈实锤）
+          抓到的主线程栈：
+              _request_back → request_exit → _teardown_exam → _stop_video
+                → self.player.stop() → libvlc_media_player_stop   ← 卡死在这里
+          原因：VLC 的 vout 线程会用**同步 SendMessage** 给嵌入窗口（video_frame，属于
+          GUI 线程）发消息；而 GUI 线程正堵在 stop() 里等 vout 收尾 → 互相等待 = 死锁。
+          1080p 起播时 VLC 会连建 2~3 次 vout（每次新建 D3D11 设备 + surface 池），
+          vout 线程忙 → 这个窗口非常宽 → 「返回主页未响应」必现。
+          （之前实测 stop() 只要 33ms 是假象：那是在 vout 已经稳定时测的。）
+          → 所以 stop 放在后台线程；主线程只等 50ms，超时就放弃等待继续跑。
+        """
+        # 世代号：若这轮停止还没执行完就已经开始了新的播放，就放弃这次停止，
+        # 否则后台线程会把新播放给停掉。
+        self._vlc_gen = getattr(self, "_vlc_gen", 0) + 1
+        gen = self._vlc_gen
+        # 「飞行中的停止」计数：主线程只等 50ms，所以起播前要靠它判断
+        # "已经有一个停止在跑了，不用再叠加一次"（两个 stop 并发会互相踩）。
+        self._vlc_stop_pending = getattr(self, "_vlc_stop_pending", 0) + 1
+        done = threading.Event()
+
+        def _stop_work():
+            t0 = time.time()
+            try:
+                # 先静音，避免"点了返回还在响"（也让放弃等待时至少不出声）
+                try:
+                    self.player.audio_set_volume(0)
+                except Exception:
+                    pass
+                try:
+                    self.player.set_pause(1)
+                except Exception:
+                    pass
+                if gen != self._vlc_gen:
+                    return                     # 已有新播放接管，别动
+                self.player.stop()             # stop() 自己会销毁 vout / 视频子窗口
+                if gen != self._vlc_gen:
+                    return
+                try:
+                    self.player.set_media(None)   # 防旧媒体 EndReached 切页后误触发
+                except Exception:
+                    pass
+                try:
+                    self.player.audio_set_volume(100)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            finally:
+                # 只在这里打耗时：主线程已经不等它了，慢也只是后台慢，界面不受影响
+                spent = 1000 * (time.time() - t0)
+                if spent > 300:
+                    print(f"[VLC] ⚠️ 后台 stop 耗时 {spent:.0f}ms（主线程不等它）")
+                self._vlc_stop_pending -= 1
+                if self._vlc_stop_pending < 0:
+                    self._vlc_stop_pending = 0
+                done.set()
+
+        threading.Thread(target=_stop_work, daemon=True).start()
+        # 只等 50ms（约 3 帧），几乎不会被感知：
+        #   · 正常停止几十毫秒就完成，行为与同步版一致；
+        #   · 一旦 VLC 卡住（1080p + 核显，vout 收尾实测可达 400ms 以上）立刻放弃等待，GUI 继续跑。
+        # 这是修复「返回主页未响应」的关键：**主线程绝不能等到 libvlc 返回**。
+        done.wait(0.05)
+
+        # VLC 子窗口已销毁（或即将销毁），后续不要再拿旧 hwnd 去枚举
+        self._vlc_parent_hwnd = None
+
+    def _show_text(self, text):
+        self.text_display.setPlainText(text)
+        self.display_stack.setCurrentWidget(self.text_display)
+
+    # ---------- 录音控制 ----------
+    def _start_recording(self):
+        self._audio_frames = []
+        self._is_recording = True
+        self._update_skip_label()  # 录音开始：跳过按钮变为「结束录音」
+        self._update_nav_buttons()  # 刷新可用态：录音中跳过按钮=结束录音，需可点
+        def callback(indata, frames, time_info, status):
+            if self._is_recording:
+                self._audio_frames.append(indata.copy())
+        self._stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='int16', callback=callback)
+        self._stream.start()
+        if self.display_stack.currentWidget() == self.video_container:
+            self.recording_overlay.move((self.video_container.width() - 200) // 2, 20)
+            self.recording_overlay.show()
+        else:
+            self.display_stack.setCurrentWidget(self.text_display)
+            self.sub_label.setText("🔴 录音中...")
+
+    def _stop_recording(self):
+        self._is_recording = False
+        self._update_skip_label()  # 录音结束：按钮恢复为「跳过」
+        self._update_nav_buttons()  # 刷新可用态
+        if self._stream:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        self.recording_overlay.hide()
+        if self.display_stack.currentWidget() == self.text_display:
+            self.sub_label.setText("")
+
+    def stop_recording(self):
+        # 公开的停止入口（用于中途退出收尾），统一复用 _stop_recording 的实现
+        self._stop_recording()
+
+    def _save_recording(self, label):
+        package_name = self.pkg.meta.get('name', 'unknown')
+        safe_name = "".join(c for c in package_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        if not safe_name:
+            safe_name = "untitled"
+        base_dir = os.path.join(RECORDINGS_DIR, safe_name)
+        os.makedirs(base_dir, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        fname = f"{safe_name}_{label}_{ts}.wav"
+        path = os.path.join(base_dir, fname)
+        if self._audio_frames:
+            data = np.concatenate(self._audio_frames)
+            # 标准库 wave 写 PCM int16，等价于原 scipy.io.wavfile.write(path, RATE, int16_arr)
+            with wave.open(path, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)          # int16 = 2 字节
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes(data.astype(np.int16).tobytes())
+            return path
+        return None
+
+    # ---------- 考试结束与批改 ----------
+    def _on_exam_finished(self):
+        self._exam_active = False
+        self.start_btn.setEnabled(True)
+        self._stop_video()
+        self._update_nav_buttons()
+        # 正常结束也需退出全屏并解除 Windows 键屏蔽
+        self._restore_window()
+        self._unblock_windows_key()
+        # 考试正常完成，清理进度文件
+        self._clear_progress()
+        if self.mode == "exam":
+            QMessageBox.information(self, "模考完成", "模考结束，即将进行离线批改。")
+        else:
+            QMessageBox.information(self, self._mode_text() + "完成",
+                                   self._mode_text() + "结束，即将进行离线批改。")
+        self.run_evaluation()
+
+    def run_evaluation(self):
+        vosk_model = load_vosk_model()
+        if not vosk_model:
+            QMessageBox.warning(self, "批改", "Vosk 模型不可用，录音已保存，稍后可重新批改。")
+            self._save_history()
+            return
+        recs = {
+            "partA": self.session.partA_recording,
+            "partB": self.session.partB_slots,
+            "partC": self.session.partC_recording,
+        }
+        selection = None
+        if self.mode == "special":
+            sel = self.selected_parts
+            selection = {
+                'partA': 'A' in sel,
+                'partB_three': {i: ('B' in sel) for i in range(len(self.pkg.partB_three_questions))},
+                'partB_five': {i: ('B' in sel) for i in range(len(self.pkg.partB_five_answers))},
+                'partC': 'C' in sel,
+            }
+        ev = grade_with_progress(self, recs, self.pkg, vosk_model, selection=selection)
+        if ev is None:
+            # 批改异常：录音已落盘，存一次无评分历史，稍后可重批
+            self._save_history()
+            return
+        self.session.evaluation = ev
+        if self.mode == "special":
+            # 剥离未训练篇目的占位结果，详情页/总分只反映本次训练的篇目
+            if 'A' not in self.selected_parts:
+                ev.pop('partA', None)
+            if 'B' not in self.selected_parts:
+                ev.pop('partB_three', None)
+                ev.pop('partB_five', None)
+            if 'C' not in self.selected_parts:
+                ev.pop('partC', None)
+        self._save_history()
+        QMessageBox.information(self, "批改完成", "练习记录与参考批改已保存至历史记录。")
+
+    def _save_history(self):
+        os.makedirs(HISTORY_DIR, exist_ok=True)
+        history = {
+            "package": self.pkg.meta.get("name", ""),
+            "mode": self.mode,
+            "parts": sorted(self.selected_parts) if self.mode == "special" else ["A", "B", "C"],
+            "timestamp": self.session.timestamp.isoformat(),
+            "recordings": {
+                "partA": self.session.partA_recording,
+                "partB": self.session.partB_slots,
+                "partC": self.session.partC_recording
+            },
+            "evaluation": self.session.evaluation,
+            "package_data": self.pkg.to_dict()
+        }
+        fname = f"history_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(os.path.join(HISTORY_DIR, fname), 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, ensure_ascii=False, default=str)
+
+# ------------------ 题目库（WakuDemo 创意工坊「对外只读接口」） ------------------
+# ⚠️ 共用只读账号 KEY：WakuDemo 创意工坊对外只读接口凭证，所有用户共享同一把（单号）。
+#    只用于拉列表 / 取下载直链，无任何写权限；接口只返回 state=Approved 的作品。
+WS_API_BASE = "https://wakudemo.cn/api/v1/external/workshop"
+WS_GAME_ID  = "101818"
+WS_KEY      = "waku_ws_c88eb836f7010edcd18886956b38d4c0d96f4670a3095ada4072fe54ca50f2df"
+WS_PAGE_SIZE = 20   # 列表接口单页条数（题库页按「加载更多」翻页，避免一次拉满）
+
+
+def _workshop_zip_path(title):
+    """题库下载目录中，某题目（按标题）对应的本地 .zip 完整路径。
+
+    下载落盘与「是否已下载」检测共用同一套命名规则，保证一致。
+    """
+    safe = re.sub(r'[\\/:*?"<>|\r\n]+', '_', title or "package").strip() or "package"
+    return os.path.join(WORKSHOP_DIR, f"{safe}.zip")
+
+
+class QuestionBankLoader(QThread):
+    """后台拉取创意工坊题目列表 / 下载题目包。
+
+    沿用 UpdateChecker 的「QThread + urllib.request」后台网络线程模式（App 内未用 requests）。
+    只读接口必须带 `X-Workshop-Key` 请求头；下载直链（COS 上海签名 url）有效期 300s，拿直链后 GET 不再需要 key。
+    """
+    got_list = pyqtSignal(list, int)          # items, total
+    list_failed = pyqtSignal(str)
+    got_download = pyqtSignal(str)            # 落盘后的本地 .zip 路径
+    download_failed = pyqtSignal(str)
+    download_progress = pyqtSignal(int, int)  # 已下载字节, 总字节(0=未知)
+
+    def __init__(self, mode, item=None, page=1, parent=None):
+        super().__init__(parent)
+        self.mode = mode                      # "list" | "download"
+        self.item = item or {}
+        self.page = page                      # list 模式：要拉的页码（1 起）
+
+    def _get_json(self, url, with_key=True):
+        headers = {"User-Agent": f"SoloTalk/{APP_VERSION}"}
+        if with_key:
+            headers["X-Workshop-Key"] = WS_KEY
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def _get_bytes_to_file(self, url, out_dir):
+        """流式下载到 out_dir 下的 .part 临时文件，边下边算 sha256，返回 (tmp_path, sha256_hex)。
+
+        ⚠️ .part 必须落在**目标目录内**（与最终 .zip 同盘），否则 `os.replace` 会报
+        WinError 17「系统无法将文件移到不同的磁盘驱动器」（%TEMP% 在 C:，题库目录可能在 G:）。
+        """
+        req = urllib.request.Request(url, headers={"User-Agent": f"SoloTalk/{APP_VERSION}"})
+        total = 0
+        h = hashlib.sha256()
+        tmp = os.path.join(
+            out_dir,
+            f".solotalk_dl_{os.getpid()}_{int(time.time() * 1000)}.part",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                try:
+                    total = int(resp.headers.get("Content-Length", "0") or "0")
+                except ValueError:
+                    total = 0
+                downloaded = 0
+                with open(tmp, "wb") as f:
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        h.update(chunk)
+                        downloaded += len(chunk)
+                        self.download_progress.emit(downloaded, total)
+        except Exception:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+            raise
+        return tmp, h.hexdigest()
+
+    def run(self):
+        try:
+            if self.mode == "list":
+                url = (f"{WS_API_BASE}/games/{WS_GAME_ID}/items"
+                       f"?page={self.page}&size={WS_PAGE_SIZE}")
+                data = self._get_json(url)
+                items = data.get("items", [])
+                total = data.get("total", len(items))
+                self.got_list.emit(items, total)
+            elif self.mode == "download":
+                item_id = self.item["id"]
+                url = f"{WS_API_BASE}/games/{WS_GAME_ID}/items/{item_id}/download"
+                info = self._get_json(url)
+                dl_url = info.get("url")
+                if not dl_url:
+                    raise ValueError("接口未返回下载直链")
+                expected_sha = (info.get("sha256") or "").strip().lower()
+                # 目标目录先建好，.part 直接下到该目录内 → 同盘，os.replace 不会跨盘失败
+                out_dir = WORKSHOP_DIR
+                os.makedirs(out_dir, exist_ok=True)
+                path = _workshop_zip_path(self.item.get("title"))
+                tmp, actual_sha = self._get_bytes_to_file(dl_url, out_dir)
+                if expected_sha and actual_sha != expected_sha:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise ValueError("下载文件 sha256 校验失败（可能被篡改或下载不完整）")
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                except OSError:
+                    pass
+                os.replace(tmp, path)
+                self.got_download.emit(path)
+        except Exception as e:
+            msg = f"{type(e).__name__}: {e}"
+            if self.mode == "list":
+                self.list_failed.emit(msg)
+            else:
+                self.download_failed.emit(msg)
+
+
+class _FadeTextButton(QWidget):
+    """自定义按钮：常态显示 base_text，悬停时**平滑交叉淡化**切换为 hover_text，点击触发回调。
+
+    用于题库页「已下载」按钮：悬停文字平滑切换为「重新下载」。
+    实现：自绘 `paintEvent` + 自定义 `fade` 属性(0→1) + `QPropertyAnimation`。
+    ⚠️ 刻意**不用 QGraphicsOpacityEffect** —— 它在 QScrollArea 中滚出再滚回会整块消失
+       （Qt 已知的重绘 bug，用户实测「触发动画后滚动回去按钮不见了」）。
+    """
+
+    def __init__(self, base_text, hover_text, bg, border, text_color, on_click, parent=None):
+        super().__init__(parent)
+        self._base_text = base_text
+        self._hover_text = hover_text
+        self._bg = QColor(bg)
+        self._bd = QColor(border)
+        self._fg = QColor(text_color)
+        self._fade = 0.0            # 0 = 显示 base，1 = 显示 hover
+        self._on_click = on_click
+        self.setCursor(Qt.PointingHandCursor)
+        _bind_font(self, 13)        # 让 self.font() 就是 13px 界面字体，供 paintEvent 用
+        self._anim = QPropertyAnimation(self, b"fade", self)
+        self._anim.setDuration(180)
+        self._anim.setEasingCurve(QEasingCurve.InOutQuad)
+
+    # 自定义动画属性：改值即触发重绘
+    def _get_fade(self):
+        return self._fade
+
+    def _set_fade(self, value):
+        self._fade = float(value)
+        self.update()
+
+    fade = pyqtProperty(float, _get_fade, _set_fade)
+
+    def _animate(self, to_hover):
+        self._anim.stop()
+        self._anim.setStartValue(self._fade)
+        self._anim.setEndValue(1.0 if to_hover else 0.0)
+        self._anim.start()
+
+    def enterEvent(self, event):
+        self._animate(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._animate(False)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._on_click:
+            self._on_click()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        p.setPen(QPen(self._bd, 1))
+        p.setBrush(self._bg)
+        p.drawRoundedRect(rect, 8, 8)
+        p.setFont(self.font())
+        p.setPen(self._fg)
+        p.setOpacity(1.0 - self._fade)
+        p.drawText(self.rect(), Qt.AlignCenter, self._base_text)
+        p.setOpacity(self._fade)
+        p.drawText(self.rect(), Qt.AlignCenter, self._hover_text)
+        p.end()
+
+
+class QuestionBankPage(QWidget):
+    """题目库页：拉取 WakuDemo 创意工坊共享题目包列表，点击即可下载并导入本地练习。
+
+    只读接口拉不到自己私有的未审核作品（只回传 state=Approved），符合「共享题库」定位。
+    顶部横幅 + 底部说明均提示「更多题目请移步 QQ 群」。
+    """
+
+    # 设计 token（与 HomePage 同源配色）
+    ACCENT      = "#66CCFF"
+    ACCENT_DEEP = "#0A9BE0"
+    ACCENT_SOFT = "#E8F6FF"
+    BG_TOP      = "#F7FBFF"
+    BG_BOT      = "#EDF6FC"
+    CARD_BG     = "#FFFFFF"
+    CARD_BD     = "#E3ECF3"
+    TEXT        = "#1A2B3C"
+    TEXT_SUB    = "#7A8A9A"
+    # 2×2 网格图标 = 「题库 / 应用库」语义
+    ICON_BANK   = ["M4 5h7v6H4z", "M13 5h7v6h-7z", "M4 13h7v6H4z", "M13 13h7v6h-7z"]
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.setObjectName("bankRoot")
+        self.setStyleSheet(
+            f"#bankRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {self.BG_TOP}, stop:1 {self.BG_BOT}); }}")
+        # QWidget 子类默认不绘制 QSS 背景 → 渐变被主窗口 #f5f6fa 透出；开启后才能正确画出页面渐变
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self._items = []
+        self._loaded = False
+        self._page = 0            # 已加载到第几页
+        self._total = 0           # 接口报告的总条数
+        self._more_btn = None     # 「加载更多」按钮
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 24, 32, 20)
+        root.setSpacing(14)
+
+        # ── 标题行（左：标题 + 副标题；右上角：返回主页）──
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        head_left = QVBoxLayout()
+        head_left.setSpacing(2)
+        title = QLabel("题目库")
+        _bind_font(title, 22, medium=True)
+        title.setStyleSheet(f"color:{self.TEXT}; background:transparent;")
+        sub = QLabel("来自 WakuDemo 创意工坊的共享题目包 · 联网即可下载导入")
+        _bind_font(sub, 13)
+        sub.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        head_left.addWidget(title)
+        head_left.addWidget(sub)
+        head.addLayout(head_left, 1)
+        self.back_btn = QPushButton("返回主页")
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        _bind_font(self.back_btn, 13)
+        self.back_btn.setStyleSheet(
+            f"QPushButton {{ background:{self.CARD_BG}; border:1px solid {self.CARD_BD};"
+            f" border-radius:8px; padding:8px 16px; color:{self.TEXT}; }}"
+            f"QPushButton:hover {{ background:{self.ACCENT_SOFT}; color:{self.ACCENT_DEEP}; }}")
+        self.back_btn.clicked.connect(lambda: self.main.go_to(self.main.home_page))
+        head.addWidget(self.back_btn, 0, Qt.AlignTop)
+        root.addLayout(head)
+
+        # ── 操作条 ──
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.setCursor(Qt.PointingHandCursor)
+        _bind_font(self.refresh_btn, 13)
+        self.refresh_btn.setStyleSheet(
+            f"QPushButton {{ background:{self.CARD_BG}; border:1px solid {self.CARD_BD};"
+            f" border-radius:8px; padding:8px 16px; color:{self.ACCENT_DEEP}; }}"
+            f"QPushButton:hover {{ background:{self.ACCENT_SOFT}; }}")
+        self.refresh_btn.clicked.connect(self.load_list)
+        bar.addWidget(self.refresh_btn)
+        self.status_lbl = QLabel("")
+        _bind_font(self.status_lbl, 12)
+        self.status_lbl.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        bar.addWidget(self.status_lbl)
+        bar.addStretch(1)
+        root.addLayout(bar)
+
+        # ── QQ 群提示横幅 ──
+        root.addWidget(self._make_qq_banner())
+
+        # ── 列表区（可滚动）──
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background:transparent; border:none; }")
+        # 视口默认是 Fusion 的 #EFEFEF 灰，会盖在页面渐变之上形成色差 —— 必须一并透明
+        scroll.viewport().setStyleSheet("background:transparent;")
+        self.list_widget = QWidget()
+        self.list_lay = QVBoxLayout(self.list_widget)
+        self.list_lay.setContentsMargins(0, 0, 0, 0)
+        self.list_lay.setSpacing(12)
+        self.list_lay.addStretch(1)
+        scroll.setWidget(self.list_widget)
+        root.addWidget(scroll, 1)
+
+        # ── 底部说明 ──
+        foot = QLabel("更多题目请移步 QQ 群（群号 1091799764）。题库内容由创作者上传，"
+                      "下载后请自行核对题目质量；导入后即进入练习模式。")
+        _bind_font(foot, 12)
+        foot.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        foot.setWordWrap(True)
+        root.addWidget(foot)
+
+        # ── 后台线程（懒创建，避免重复实例）──
+        self.loader = None
+
+    # ---------------- 组件 ----------------
+    def _make_qq_banner(self):
+        banner = QFrame()
+        banner.setObjectName("bankQqBanner")
+        banner.setStyleSheet(
+            f"#bankQqBanner {{ background:{self.ACCENT_SOFT}; border:1px solid {self.ACCENT};"
+            f" border-radius:10px; padding:6px 8px; }}")
+        lay = QHBoxLayout(banner)
+        lay.setContentsMargins(12, 6, 12, 6)
+        lay.setSpacing(10)
+        icon = QLabel()
+        icon.setPixmap(_svg_pixmap(self.ICON_BANK, self.ACCENT_DEEP, 22))
+        icon.setFixedSize(24, 24)
+        icon.setStyleSheet("background:transparent;")
+        lay.addWidget(icon)
+        txt = QLabel()
+        _bind_font(txt, 13, medium=True)
+        txt.setOpenExternalLinks(True)
+        txt.setTextFormat(Qt.RichText)
+        txt.setText(
+            '更多题目或想上传题目，请进 QQ 群（群号 1091799764）<br>'
+            '上传也可登录 <a href="https://wakudemo.cn/creator/workshop" '
+            'style="color:#0A9BE0; text-decoration:underline;">waku 平台</a> '
+            '在“创意工坊”处上传'
+        )
+        txt.setStyleSheet(f"color:{self.ACCENT_DEEP}; background:transparent;")
+        lay.addWidget(txt)
+        link = QPushButton("加入 QQ 群")
+        link.setCursor(Qt.PointingHandCursor)
+        _bind_font(link, 13)
+        link.setStyleSheet(
+            f"QPushButton {{ background:{self.ACCENT_DEEP}; border:none; border-radius:8px;"
+            f" padding:7px 14px; color:#FFFFFF; }}"
+            f"QPushButton:hover {{ background:#0b8bc9; }}")
+        link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(MorePage.QQ_JOIN_URL)))
+        lay.addWidget(link)
+        lay.addStretch(1)
+        return banner
+
+    def _fmt_size(self, n):
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return "未知大小"
+        if n < 1024:
+            return f"{n} B"
+        if n < 1024 * 1024:
+            return f"{n / 1024:.1f} KB"
+        return f"{n / 1024 / 1024:.1f} MB"
+
+    def _fmt_date(self, s):
+        if not s:
+            return ""
+        # 接口返回 ISO 时间串，尽量截到「日期 时间」
+        s = s.replace("T", " ").replace("Z", "")
+        return s[:19] if len(s) >= 19 else s
+
+    def _check_local(self, item):
+        """仅按**文件名**判断本地下载状态（不在这里做哈希校验）。
+
+        返回 ("downloaded"|"missing", path)。
+        哈希校验的时机见 `import_local`：只在用户从「已下载」项点「开始练习」进入时才校验，
+        校验失败提示重新下载；而文件名检测只是决定按钮显示「已下载」还是「下载并导入」。
+        """
+        path = _workshop_zip_path(item.get("title"))
+        return ("downloaded", path) if os.path.isfile(path) else ("missing", path)
+
+    # ---------------- 数据加载 ----------------
+    def load_list(self):
+        """整表刷新：清空并从第 1 页重新拉取。"""
+        self._items = []
+        self._page = 0
+        self._total = 0
+        self.status_lbl.setText("正在拉取题目库…")
+        self.refresh_btn.setEnabled(False)
+        self._clear_list()
+        self._fetch_page(1, append=False)
+
+    def load_more(self):
+        """加载下一页，追加到列表末尾。"""
+        self.refresh_btn.setEnabled(False)
+        self.status_lbl.setText("正在加载更多…")
+        self._fetch_page(self._page + 1, append=True)
+
+    def _fetch_page(self, page, append):
+        loader = QuestionBankLoader("list", page=page)
+        loader.got_list.connect(
+            lambda items, total, p=page, a=append: self._on_list(items, total, p, a))
+        loader.list_failed.connect(
+            lambda msg, p=page, a=append: self._on_list_error(msg, p, a))
+        loader.finished.connect(lambda: self.refresh_btn.setEnabled(True))
+        loader.start()
+        self.loader = loader
+
+    def _on_list(self, items, total, page, append):
+        self._loaded = True
+        self._total = total
+        self._page = page
+        if append:
+            self._items.extend(items)
+        else:
+            self._items = list(items)
+        self._render_items()
+
+    def _render_items(self):
+        """按 self._items 重建整张列表，并**重新检测**每条的本地下载状态。
+
+        每次进入题库页 / 刷新都会走到这里：卡片按钮由「下载并导入」变为「已下载」，
+        退出练习再回来状态即可自动更新（不联网，纯本地文件检测）。
+        """
+        self._clear_list()
+        self._remove_more_btn()
+        if not self._items:
+            self.status_lbl.setText("题库暂无可下载题目（需联网且审核通过后才会出现在此）")
+            self._add_empty_hint()
+            return
+        # 每条只检测一次（避免重复算 sha256），结果同时用于按钮态与统计
+        checks = [self._check_local(it) for it in self._items]
+        for it, (state, _p) in zip(self._items, checks):
+            self._add_card(it, state)
+        done = sum(1 for s, _ in checks if s == "downloaded")
+        extra = f" · 已下载 {done} 个" if done else ""
+        self.status_lbl.setText(
+            f"共 {self._total} 个题目包（已显示 {len(self._items)} 个{extra}）")
+        if len(self._items) < self._total:
+            self._add_more_btn(self._total - len(self._items))
+
+    def _on_list_error(self, msg, page=1, append=False):
+        # 401 / 超时 / 断网 等
+        self.status_lbl.setText("")
+        if append:
+            # 已加载的卡片保留，只提示这次翻页失败
+            QMessageBox.warning(self, "加载失败", f"加载更多失败：\n{msg}")
+        else:
+            self._add_error_hint(msg)
+
+    # ---------------- 列表渲染 ----------------
+    def _clear_list(self):
+        # stretch 是最后一个（index = count-1），其余 widget 全部移除并销毁
+        while self.list_lay.count() > 1:
+            w = self.list_lay.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+        self._more_btn = None
+
+    def _add_more_btn(self, remaining):
+        btn = QPushButton(f"加载更多（还有 {remaining} 个）")
+        btn.setCursor(Qt.PointingHandCursor)
+        _bind_font(btn, 13)
+        btn.setStyleSheet(
+            f"QPushButton {{ background:{self.CARD_BG}; border:1px solid {self.CARD_BD};"
+            f" border-radius:8px; padding:10px 16px; color:{self.ACCENT_DEEP}; }}"
+            f"QPushButton:hover {{ background:{self.ACCENT_SOFT}; }}")
+        btn.clicked.connect(self.load_more)
+        self.list_lay.insertWidget(self.list_lay.count() - 1, btn)
+        self._more_btn = btn
+
+    def _remove_more_btn(self):
+        btn = getattr(self, "_more_btn", None)
+        if btn is not None:
+            try:
+                self.list_lay.removeWidget(btn)
+                btn.deleteLater()
+            except RuntimeError:
+                pass
+            self._more_btn = None
+
+    def _add_empty_hint(self):
+        hint = QLabel("暂无题目。可在 WakuDemo 创意工坊上传自己的题目包，审核通过后即会出现在这里。")
+        _bind_font(hint, 13)
+        hint.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        hint.setWordWrap(True)
+        self.list_lay.insertWidget(0, hint)
+
+    def _add_error_hint(self, msg):
+        box = QFrame()
+        box.setObjectName("bankErr")
+        box.setStyleSheet(
+            f"#bankErr {{ background:#FFF1F0; border:1px solid #FFCCC7; border-radius:10px;"
+            f" padding:14px 16px; }}")
+        lay = QVBoxLayout(box)
+        lay.setSpacing(6)
+        t = QLabel("拉取题目库失败")
+        _bind_font(t, 14, medium=True)
+        t.setStyleSheet("color:#cf1322; background:transparent;")
+        m = QLabel(msg)
+        _bind_font(m, 12)
+        m.setStyleSheet("color:#7a3b38; background:transparent;")
+        m.setWordWrap(True)
+        h = QLabel("请检查网络后点「刷新」重试。只读接口需联网，且服务器偶发超时属正常现象。")
+        _bind_font(h, 12)
+        h.setStyleSheet("color:#7a3b38; background:transparent;")
+        h.setWordWrap(True)
+        lay.addWidget(t)
+        lay.addWidget(m)
+        lay.addWidget(h)
+        self.list_lay.insertWidget(0, box)
+
+    def _add_card(self, item, state=None):
+        if state is None:
+            state, _p = self._check_local(item)
+        card = QFrame()
+        card.setObjectName("bankCard")
+        card.setStyleSheet(
+            f"#bankCard {{ background:{self.CARD_BG}; border:1px solid {self.CARD_BD};"
+            f" border-radius:12px; padding:14px 16px; }}")
+        row = QHBoxLayout(card)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(14)
+
+        # 左：图标
+        ic = QLabel()
+        ic.setFixedSize(40, 40)
+        ic.setAlignment(Qt.AlignCenter)
+        ic.setStyleSheet(
+            f"background:{self.ACCENT_SOFT}; border-radius:20px; border:none;")
+        ic.setPixmap(_svg_pixmap(self.ICON_BANK, self.ACCENT_DEEP, 22))
+        row.addWidget(ic)
+
+        # 中：标题 + 元信息
+        mid = QVBoxLayout()
+        mid.setSpacing(4)
+        name = QLabel(item.get("title") or "(无标题)")
+        _bind_font(name, 15, medium=True)
+        name.setStyleSheet(f"color:{self.TEXT}; background:transparent;")
+        meta = QLabel(
+            f"作者：{item.get('creatorName') or '匿名'}　|　"
+            f"{self._fmt_size(item.get('fileSize'))}　|　"
+            f"{self._fmt_date(item.get('createdAt'))}"
+        )
+        _bind_font(meta, 12)
+        meta.setStyleSheet(f"color:{self.TEXT_SUB}; background:transparent;")
+        mid.addWidget(name)
+        mid.addWidget(meta)
+        row.addLayout(mid, 1)
+
+        # 右：按钮区（按是否已下载分两种布局）
+        #  · 已下载：左侧「已下载」淡入淡出按钮（悬停→「重新下载」，点击触发重新下载）
+        #           + 右侧「开始练习」按钮（点击进入练习，此时才做 sha256 校验）。
+        #  · 未下载：单个「下载并导入」按钮。
+        state, _path = self._check_local(item)
+        if state == "downloaded":
+            btn_area = QHBoxLayout()
+            btn_area.setSpacing(10)
+            BTN_W, BTN_H = 104, 38   # 两个按钮统一尺寸，视觉对齐
+            # 「已下载」淡入淡出按钮：悬停平滑切换为「重新下载」，点击重新下载
+            fade = _FadeTextButton(
+                "已下载", "重新下载",
+                "#EAF7EE", "#B7E0C4", "#2E7D46",
+                lambda it=item: self.download_and_import(it),
+            )
+            fade.setFixedSize(BTN_W, BTN_H)
+            fade.setToolTip("点击重新下载本题库包")
+            # 「开始练习」按钮（置于「已下载」右侧，尺寸与「已下载」一致）
+            start = QPushButton("开始练习")
+            start.setCursor(Qt.PointingHandCursor)
+            _bind_font(start, 13)
+            start.setFixedSize(BTN_W, BTN_H)
+            start.setStyleSheet(
+                f"QPushButton {{ background:{self.ACCENT_DEEP}; border:none; border-radius:8px;"
+                f" padding:0px; color:#FFFFFF; }}"
+                f"QPushButton:hover {{ background:#0b8bc9; }}")
+            start.clicked.connect(lambda _=False, it=item: self.import_local(it))
+            btn_area.addWidget(fade)
+            btn_area.addWidget(start)
+            row.addLayout(btn_area)
+        else:
+            btn = QPushButton("下载并导入")
+            btn.setCursor(Qt.PointingHandCursor)
+            _bind_font(btn, 13)
+            btn.setStyleSheet(
+                f"QPushButton {{ background:{self.ACCENT_DEEP}; border:none; border-radius:8px;"
+                f" padding:9px 16px; color:#FFFFFF; }}"
+                f"QPushButton:hover {{ background:#0b8bc9; }}"
+                f"QPushButton:disabled {{ background:#BFD8E6; }}")
+            btn.clicked.connect(lambda _=False, it=item: self.download_and_import(it))
+            row.addWidget(btn)
+        self.list_lay.insertWidget(self.list_lay.count() - 1, card)
+
+    # ---------------- 下载 + 导入 ----------------
+    def download_and_import(self, item):
+        btn = self.sender()
+        if btn:
+            btn.setEnabled(False)
+            btn.setText("下载中…")
+        self.status_lbl.setText(f"正在下载「{item.get('title') or ''}」…")
+        loader = QuestionBankLoader("download", item=item)
+        loader.got_download.connect(lambda p: self._on_downloaded(p, item))
+        loader.download_failed.connect(lambda m: self._on_download_error(m, item))
+        loader.download_progress.connect(lambda d, t: self._on_progress(d, t, item))
+        loader.finished.connect(lambda: None)
+        loader.start()
+        # 记到本地便于出错时定位（不阻塞）
+        self._active_loader = loader
+
+    def _on_progress(self, done, total, item):
+        if total and total > 0:
+            pct = int(done / total * 100)
+            self.status_lbl.setText(f"正在下载「{item.get('title') or ''}」… {pct}%")
+        else:
+            self.status_lbl.setText(f"正在下载「{item.get('title') or ''}」… {done // 1024} KB")
+
+    def _on_downloaded(self, path, item):
+        self.status_lbl.setText("下载完成，正在导入…")
+        self._do_import(path, item)
+
+    def import_local(self, item):
+        """从「已下载」项点「开始练习」→ 导入本地题目包并进入练习。
+
+        ⚠️ 哈希校验**只在这里做**（用户从已下载题库进入练习时）：比对本地文件实算 sha256
+        与接口 `sha256` 字段，不一致说明本地文件损坏/被改 → 弹「建议重新下载」Fluent 弹窗，
+        可选「重新下载」（重新拉一份）或「无视风险，开始练习」（忽略校验直接进入）。
+        """
+        path = _workshop_zip_path(item.get("title"))
+        if not os.path.isfile(path):
+            FluentMessageDialog(
+                self, "文件不存在",
+                "本地题目包已不存在，请点「刷新」后重新下载。",
+                icon=D_ICON_WARN,
+                buttons=(("知道了", "primary", "ok"),),
+            ).exec_()
+            self._render_items()
+            return
+        expected = (item.get("sha256") or "").strip().lower()
+        if expected:
+            try:
+                h = hashlib.sha256()
+                with open(path, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        h.update(chunk)
+                if h.hexdigest().lower() != expected:
+                    dlg = FluentMessageDialog(
+                        self, "建议重新下载",
+                        "本地题目包与线上版本不一致（可能已损坏）。\n"
+                        "建议重新下载后再开始练习。",
+                        informative="你也可以无视风险，直接开始练习（题目可能不完整或异常）。",
+                        icon=D_ICON_WARN,
+                        buttons=(
+                            ("重新下载", "primary", "redownload"),
+                            ("无视风险，开始练习", "secondary", "ignore"),
+                        ),
+                        default_key="redownload",
+                    )
+                    dlg.exec_()
+                    if dlg.clicked_key == "redownload":
+                        self.download_and_import(item)   # 重新拉一份覆盖本地
+                    elif dlg.clicked_key == "ignore":
+                        self._do_import(path, item)      # 忽略校验、直接进入练习
+                    return
+            except OSError:
+                FluentMessageDialog(
+                    self, "读取失败",
+                    "本地题目包读取失败，请点「已下载」按钮重新下载。",
+                    icon=D_ICON_WARN,
+                    buttons=(("知道了", "primary", "ok"),),
+                ).exec_()
+                return
+        self._do_import(path, item)
+
+    def _do_import(self, path, item):
+        try:
+            data, temp_dir, base_dir = _open_package_zip(path)
+            self.main.current_package = SoloPackage()
+            self.main.current_package.from_dict(data, base_dir=base_dir)
+            self.main.current_package.meta['temp_dir'] = temp_dir
+            self.main.practice_page.pkg = self.main.current_package
+            self.main.practice_page.set_mode("practice", None)
+            self.main.go_to(self.main.practice_page)
+            self.main.practice_page._check_and_prompt_progress()
+            self.status_lbl.setText("")
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败",
+                                 f"题目包「{item.get('title') or ''}」导入失败：\n{str(e)}")
+            self.status_lbl.setText("")
+
+    def _on_download_error(self, msg, item):
+        QMessageBox.critical(self, "下载失败",
+                             f"题目包「{item.get('title') or ''}」下载失败：\n{msg}")
+        self.status_lbl.setText("")
+        self._render_items()  # 重建卡片，按钮复位（保留已加载的分页）
+
+    # ---------------- 生命周期 ----------------
+    def showEvent(self, event):
+        # 首次进入：联网拉一次列表；之后每次进入（如退出练习再回来）：重建卡片并重算
+        # 「已下载」状态（纯本地 sha256 校验，不联网），保证状态及时更新。
+        if not self._loaded:
+            self.load_list()
+        elif self._items:
+            self._render_items()
+        super().showEvent(event)
+
+
+# ------------------ 历史记录页面 ------------------
+# ------------------ 历史记录：总分列辅助 ------------------
+def _eval_total_score(ev):
+    """从 evaluation dict 算总分，返回 (score, max)。
+
+    与详情页 `HistoryPage._detail_eval_card` 同一套算法：
+      Part A = accuracy*20；Part B 每题 2 分（相似度*2）；Part C = semantic_sim*24；
+      分母按实际出现的篇目动态求和（专项训练只算选定篇目，避免 x.x/60 误导）。
+    无任何可评分内容时返回 (None, 0)。
+    """
+    if not ev:
+        return None, 0
+    PART_A_MAX, PART_B_PER_ITEM, PART_C_MAX = 20, 2, 24
+    score, maxv = 0.0, 0
+    if 'partA' in ev:
+        try:
+            score += float(ev['partA'].get('accuracy', 0) or 0) * PART_A_MAX
+        except (TypeError, ValueError):
+            pass
+        maxv += PART_A_MAX
+    nb = 0
+    for key in ('partB_three', 'partB_five'):
+        for t in (ev.get(key) or []):
+            sim = t.get('similarity', 0) if isinstance(t, dict) else 0
+            try:
+                score += float(sim or 0) * PART_B_PER_ITEM
+            except (TypeError, ValueError):
+                pass
+            nb += 1
+    maxv += nb * PART_B_PER_ITEM
+    if 'partC' in ev:
+        sem = ev['partC'].get('semantic_sim')
+        try:
+            sem = float(sem) if sem is not None else None
+        except (TypeError, ValueError):
+            sem = None
+        if sem is not None:
+            score += sem * PART_C_MAX
+        maxv += PART_C_MAX
+    return (score, maxv) if maxv else (None, 0)
+
+
+class _HistRow(QTreeWidgetItem):
+    """历史列表行：让「总分」列（第 1 列）按**数值**排序，其余列沿用默认（DisplayRole 文本）。
+
+    默认 QTreeWidgetItem 对 "52.3/60" 这类文本按字典序排（"9.0/60" 会排在 "52.3/60" 前），
+    故需按存储的数值比较。
+    """
+    SCORE_ROLE = Qt.UserRole + 1
+
+    def __lt__(self, other):
+        tw = self.treeWidget()
+        if tw is not None and tw.sortColumn() == 1:
+            a = self.data(1, self.SCORE_ROLE)
+            b = other.data(1, self.SCORE_ROLE)
+            try:
+                return float(a) < float(b)
+            except (TypeError, ValueError):
+                return str(a) < str(b)
+        return QTreeWidgetItem.__lt__(self, other)
+
+
+class HistoryPage(QWidget):
+    # 分类徽标配色（与详情页 _d_chip 同一体系：浅底 + 细描边 + 深字）
+    _MODE_STYLES = {
+        "practice": ("练习",     "#F2F8FD", "#DCE9F3", "#283593"),
+        "exam":     ("模考",     "#FFF7E8", "#F0E3B8", "#8a6d1f"),
+        "special":  ("专项训练", "#F6F0FB", "#E6D3F0", "#7B1FA2"),
+    }
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.setObjectName("hsRoot")
+        self.setStyleSheet(
+            f"#hsRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 #FAFBFC, stop:1 #F2F4F7); }}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(28, 22, 28, 18)
+        root.setSpacing(12)
+
+        # ── 标题 ──
+        title = QLabel("练习历史记录")
+        _bind_font(title, 20, medium=True)
+        title.setStyleSheet(f"color:{D_TEXT}; background:transparent;")
+        sub = QLabel("双击查看详情 · 选中后可重新批改或删除")
+        _bind_font(sub, 12)
+        sub.setStyleSheet(f"color:{D_SUB}; background:transparent;")
+        root.addWidget(title)
+        root.addWidget(sub)
+
+        # ── 白卡 + 三列结构化列表（标题 | 分类 | 时间）──
+        card = QFrame()
+        card.setObjectName("hsCard")
+        card.setStyleSheet(
+            f"#hsCard {{ background:{D_CARD}; border:1px solid {D_BD};"
+            f" border-radius:14px; }}")
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(4, 2, 4, 4)
+        cv.setSpacing(0)
+
+        self.list_widget = QTreeWidget()
+        self.list_widget.setObjectName("hsTree")
+        self.list_widget.setColumnCount(4)
+        self.list_widget.setHeaderLabels(["标题", "总分", "分类", "时间"])
+        self.list_widget.setRootIsDecorated(False)
+        self.list_widget.setUniformRowHeights(True)
+        self.list_widget.setAllColumnsShowFocus(True)
+        self.list_widget.setIndentation(0)
+        self.list_widget.setFrameShape(QFrame.NoFrame)
+        self.list_widget.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.list_widget.itemDoubleClicked.connect(
+            lambda it, _col: self.view_detail(it))
+        _bind_font(self.list_widget, 14)
+        _SmoothScroll(self.list_widget)   # 运行时新建的滚动区要手动挂缓动滚动
+
+        hh = self.list_widget.header()
+        hh.setSectionsMovable(False)
+        hh.setStretchLastSection(False)
+        # ❗列宽规则（2026-10-02 调整：在 标题 与 分类 之间新增「总分」列）：
+        #  · 标题(0)=Stretch 占满左侧剩余宽度；总分(1)、分类(2)、时间(3)=Fixed 固定宽、贴最右。
+        #  · 拖拽能力删除：固定列都是 Fixed → 分隔线都拖不动（用户："拉动就删了"）。
+        #    标题是 Stretch 也没法拖 —— 它本就是自适应撑满。整体"列宽不可手动调"。
+        #  · 排序照旧保留（setSortingEnabled + sortByColumn；总分列按数值排）。
+        hh.setSectionResizeMode(0, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.Fixed)
+        hh.setSectionResizeMode(2, QHeaderView.Fixed)
+        hh.setSectionResizeMode(3, QHeaderView.Fixed)
+        hh.resizeSection(1, 96)     # 总分
+        hh.resizeSection(2, 132)    # 分类
+        hh.resizeSection(3, 178)    # 时间
+        hh.setMinimumSectionSize(56)
+        self.list_widget.headerItem().setTextAlignment(
+            1, Qt.AlignRight | Qt.AlignVCenter)   # 总分
+        self.list_widget.headerItem().setTextAlignment(
+            3, Qt.AlignRight | Qt.AlignVCenter)   # 时间
+
+        # ⚠️ QFrame 选择器会命中 QLabel，全部用 #objectName 限定
+        # ❗padding-right 必须留够（26px）：排序指示箭头由 style 画在 section 右端，
+        #   而 QSS 的 padding 决定文字位置，两者互不知情。padding-right 太小(8px)时，
+        #   右对齐的"时间"表头文字会正好压在箭头上 —— 用户截图里箭头糊在"间"字上。
+        #   留 26px 后文字右边缘 (~805) 与箭头 (~816) 之间隔开约 11px。
+        self.list_widget.setStyleSheet(f"""
+            #hsTree {{ background:transparent; border:none; outline:none; }}
+            #hsTree::item {{ height:44px; padding-left:8px; border:none; }}
+            #hsTree::item:hover {{ background:#F2F8FD; }}
+            #hsTree::item:selected {{ background:#E3F2FD; color:{D_TEXT}; }}
+            QHeaderView::section {{
+                background:transparent; border:none;
+                border-bottom:1px solid {D_LINE};
+                border-right:1px solid {D_DIV};
+                padding:6px 26px 6px 8px; font-size:12px; color:{D_SUB};
+            }}
+            QHeaderView::section:last {{ border-right:none; }}
+        """)
+        cv.addWidget(self.list_widget)
+        root.addWidget(card, 1)
+
+        # ── 底部操作（与详情页按钮同一套样式；删除用红色系提示危险）──
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+
+        def _btn(text, slot, danger=False):
+            b = QPushButton(text)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setFixedHeight(40)
+            _bind_font(b, 13)
+            fg, bd, hv = (("#c0392b", "#F0D5D5", "#FDECEC") if danger
+                          else (D_SUB, D_BD, D_LINE))
+            b.setStyleSheet(
+                f"QPushButton {{ background:{D_CARD}; border:1px solid {bd};"
+                f" border-radius:10px; padding:0 22px; color:{fg}; }}"
+                f"QPushButton:hover {{ background:{hv}; }}")
+            b.clicked.connect(slot)
+            return b
+
+        btns.addWidget(_btn("重新批改选中记录", self.reevaluate_selected))
+        btns.addWidget(_btn("删除选中记录", self.delete_selected, danger=True))
+        btns.addStretch(1)
+        btns.addWidget(_btn("返回主页",
+                            lambda: self.main.go_to(self.main.home_page)))
+        root.addLayout(btns)
+
+    def showEvent(self, event):
+        self.load_history()
+        super().showEvent(event)
+
+    def load_history(self):
+        self.list_widget.clear()
+        if not os.path.exists(HISTORY_DIR):
+            return
+        files = sorted(Path(HISTORY_DIR).glob("history_*.json"), reverse=True)
+        for f in files:
+            try:
+                with open(f, 'r', encoding='utf-8') as fh:
+                    data = json.load(fh)
+                # 结构化四列：标题 | 总分 | 分类 | 时间。
+                # 分类是带配色的徽标（练习/模考/专项训练·篇目）；旧记录无 mode 字段 → 按「练习」回退（与详情徽标一致）
+                mode = data.get('mode', '') or 'practice'
+                label, bg, bd, fg = self._MODE_STYLES.get(
+                    mode, self._MODE_STYLES["practice"])
+                if mode == "special":
+                    parts = data.get('parts') or []
+                    if parts:
+                        label += f"·{''.join(parts)}"
+                ts = str(data.get('timestamp', ''))
+                ts_clean = ts.split('.')[0].replace('T', ' ') if ts else ''
+
+                # 总分列（标题与分类之间）：与详情页同一算法；无评分显示「—」
+                tscore, tmax = _eval_total_score(data.get('evaluation') or {})
+                if tscore is None:
+                    score_txt, score_color, score_key = "—", D_MUTED, -1.0
+                else:
+                    ratio = tscore / tmax if tmax else 0
+                    score_color = ('#c0392b' if ratio < 0.6 else
+                                   '#e67e22' if ratio < 0.8 else '#27ae60')
+                    score_txt = f"{tscore:.1f}/{tmax}"
+                    score_key = tscore
+
+                it = _HistRow([str(data.get('package', '?')), score_txt, label, ts_clean])
+                it.setData(0, Qt.UserRole, str(f))
+                it.setData(1, _HistRow.SCORE_ROLE, score_key)   # 供「总分」列数值排序
+                it.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+                it.setForeground(1, QBrush(QColor(score_color)))
+                it.setTextAlignment(3, Qt.AlignRight | Qt.AlignVCenter)
+                it.setForeground(3, QBrush(QColor(D_SUB)))
+                # ❗分类列(2)的文字只为「点表头能按分类排序」而存在（排序用 DisplayRole 文本）。
+                #   必须设成全透明：否则 delegate 会把黑字画在 chip 底下，chip 盖不住的
+                #   左边缘 1~2px 就露出 ClearType 亚像素边缘 —— 用户看到的那个"小黑点"。
+                it.setForeground(2, QBrush(Qt.transparent))
+                self.list_widget.addTopLevelItem(it)
+
+                # 分类列放彩色徽标（setItemWidget 会铺满单元格，外面套一层留边）
+                wrap = QWidget()
+                wrap.setStyleSheet("background:transparent;")
+                wl = QHBoxLayout(wrap)
+                wl.setContentsMargins(4, 5, 4, 5)
+                chip = QLabel(label)
+                chip.setObjectName("hsChip")
+                chip.setAlignment(Qt.AlignCenter)
+                chip.setFixedHeight(26)
+                chip.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                _bind_font(chip, 12)
+                chip.setStyleSheet(
+                    f"#hsChip{{background:{bg};border:1px solid {bd};"
+                    f"border-radius:9px;color:{fg};}}")
+                wl.addWidget(chip)
+                self.list_widget.setItemWidget(it, 2, wrap)
+            except:
+                pass
+        if self.list_widget.topLevelItemCount() == 0:
+            empty = QTreeWidgetItem(["（暂无练习记录）", "", "", ""])
+            empty.setDisabled(True)
+            empty.setForeground(0, QBrush(QColor(D_MUTED)))
+            self.list_widget.addTopLevelItem(empty)
+            return
+
+        # 启用排序（点表头即排），默认按时间降序（最新在前）。
+        # 时间列文本为 "YYYY-MM-DD HH:MM:SS"，零填充，字典序==时间序。
+        self.list_widget.setSortingEnabled(True)
+        self.list_widget.sortByColumn(3, Qt.DescendingOrder)   # 时间列（现为第 3 列）
+        # 列宽规则：标题=Stretch 占满左侧，分类/时间=Fixed 固定贴右（不参与排序箭头布局）。
+        # 排序照旧保留：点表头即排，默认按时间降序。
+
+    def delete_selected(self):
+        current_item = self.list_widget.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "提示", "请先选择一条记录")
+            return
+        path = current_item.data(0, Qt.UserRole)
+        if not path or not os.path.exists(path):
+            return
+        reply = QMessageBox.question(self, "确认删除", "确定要删除该历史记录吗？",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            try:
+                os.remove(path)
+                self.load_history()
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"删除失败：{str(e)}")
+
+    def reevaluate_selected(self):
+        current_item = self.list_widget.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "提示", "请先选择一条记录")
+            return
+        path = current_item.data(0, Qt.UserRole)
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except:
+            FluentMessageDialog(self, "文件损坏",
+                                "历史记录文件损坏，无法打开。",
+                                buttons=(("知道了", "primary", "ok"),)).exec_()
+            return
+        recs = data.get('recordings', {})
+        pkg_dict = data.get('package_data', {})
+        temp_pkg = SoloPackage()
+        temp_pkg.from_dict(pkg_dict)
+
+        # ── 收集该记录实际存在的录音槽位 ──
+        b3, b5 = _partB_slots_as_ordered(recs.get('partB', {}))
+        n3 = len(temp_pkg.partB_three_questions)
+        n5 = len(temp_pkg.partB_five_answers)
+
+        # ── 弹出多选对话框（Fluent 卡片版：扁平 + 胶囊徽标 + 清晰层级，与首页/详情同源）──
+        dlg = QDialog(self)
+        dlg.setWindowTitle("选择重新批改的部分")
+        dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dlg.setObjectName("rgRoot")
+        dlg.setStyleSheet(
+            f"#rgRoot {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f" stop:0 {D_BG_TOP}, stop:1 {D_BG_BOT}); }}")
+        dlg.setMinimumWidth(420)
+
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(24, 22, 24, 18)
+        root.setSpacing(14)
+
+        # 标题行：图标 + 标题 + 说明
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        ic = QLabel()
+        ic.setFixedSize(34, 34)
+        ic.setAlignment(Qt.AlignCenter)
+        ic.setPixmap(_svg_pixmap(D_ICON_CHART, D_ACCENT_DEEP, 26))
+        ic.setStyleSheet("background:transparent;")
+        head.addWidget(ic, 0, Qt.AlignTop)
+        hcol = QVBoxLayout()
+        hcol.setSpacing(5)
+        hcol.addWidget(_d_label("选择重新批改的部分", 16, D_TEXT, medium=True, wrap=False))
+        hcol.addWidget(_d_label("勾选要重新批改的部分，未勾选的保持原评分。", 12, D_MUTED, wrap=True))
+        head.addLayout(hcol, 1)
+        root.addLayout(head)
+
+        checks = []  # (selection键, 字母, 卡片按钮)
+
+        def _add_row(key, letter, badge_bg, badge_fg, text):
+            card = QPushButton()
+            card.setObjectName("rgCard")
+            card.setCheckable(True)
+            card.setChecked(True)
+            card.setFixedHeight(54)
+            card.setCursor(Qt.PointingHandCursor)
+            card.setStyleSheet(
+                f"#rgCard {{ background:{D_CARD}; border:1px solid {D_BD};"
+                f" border-radius:12px; padding:0px; text-align:left; }}"
+                f"#rgCard:checked {{ background:{D_ACCENT_SOFT};"
+                f" border:1.5px solid {D_ACCENT_DEEP}; }}"
+                f"#rgCard:hover {{ border:1px solid {D_ACCENT}; }}")
+            lay = QHBoxLayout(card)
+            lay.setContentsMargins(14, 0, 14, 0)
+            lay.setSpacing(12)
+            bd = QLabel(letter)
+            bd.setFixedSize(30, 30)
+            bd.setAlignment(Qt.AlignCenter)
+            _bind_font(bd, 15, medium=True)
+            bd.setStyleSheet(
+                f"background:{badge_bg}; color:{badge_fg};"
+                f" border-radius:15px; padding:0px;")
+            bd.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            lay.addWidget(bd)
+            tx = _d_label(text, 14, D_TEXT, wrap=False)
+            tx.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            lay.addWidget(tx, 1)
+            ck = QLabel()
+            ck.setFixedSize(20, 20)
+            ck.setAlignment(Qt.AlignCenter)
+            ck.setPixmap(_svg_pixmap(_SPECIAL_CHECK, D_ACCENT_DEEP, 18))
+            ck.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            lay.addWidget(ck)
+            card.toggled.connect(lambda on, c=ck: c.setVisible(on))
+            root.addWidget(card)
+            checks.append((key, letter, card))
+
+        if recs.get('partA'):
+            _add_row('partA', 'A', "#E3F2FD", "#1565C0", "Part A  模仿朗读")
+        has_b3 = any(b3[i] for i in range(min(len(b3), n3)))
+        if has_b3:
+            _add_row('partB_three', 'B', "#F7DCDC", "#C0392B", "Part B  三问")
+        has_b5 = any(b5[i] for i in range(min(len(b5), n5)))
+        if has_b5:
+            _add_row('partB_five', 'B', "#F7DCDC", "#C0392B", "Part B  五答")
+        if recs.get('partC'):
+            _add_row('partC', 'C', "#FFFDE7", "#9E7B00", "Part C  故事复述")
+
+        if not checks:
+            FluentMessageDialog(self, "无可批改内容",
+                                "该记录没有可重新批改的录音。",
+                                buttons=(("知道了", "primary", "ok"),)).exec_()
+            return
+
+        root.addSpacing(2)
+        foot = QHBoxLayout()
+        foot.setSpacing(10)
+        foot.addStretch(1)
+        btn_cancel = QPushButton("取消")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.setFixedHeight(38)
+        btn_cancel.setMinimumWidth(96)
+        _bind_font(btn_cancel, 13)
+        btn_cancel.setStyleSheet(FluentMessageDialog._btn_qss("secondary"))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("确定")
+        btn_ok.setCursor(Qt.PointingHandCursor)
+        btn_ok.setFixedHeight(38)
+        btn_ok.setMinimumWidth(96)
+        _bind_font(btn_ok, 13, medium=True)
+        btn_ok.setStyleSheet(FluentMessageDialog._btn_qss("primary"))
+        btn_ok.clicked.connect(dlg.accept)
+        btn_ok.setDefault(True)
+        foot.addWidget(btn_cancel)
+        foot.addWidget(btn_ok)
+        root.addLayout(foot)
+
+        if dlg.exec_() != QDialog.Accepted:
+            return
+
+        # ── 构建 selection（勾选的 Part → 其下所有子项全选）──
+        selection = {}
+        for key, letter, card in checks:
+            if card.isChecked():
+                if key in ('partA', 'partC'):
+                    selection[key] = True
+                elif key == 'partB_three':
+                    selection[key] = {i: True for i in range(n3) if i < len(b3) and b3[i]}
+                elif key == 'partB_five':
+                    selection[key] = {i: True for i in range(n5) if i < len(b5) and b5[i]}
+        if not selection:
+            FluentMessageDialog(self, "未选择任何题目",
+                                "未选择任何题目，已取消重新批改。",
+                                buttons=(("知道了", "primary", "ok"),)).exec_()
+            return
+
+        vosk_model = load_vosk_model()
+        if not vosk_model:
+            FluentMessageDialog(self, "无法重新批改",
+                                "Vosk 模型不可用，无法重新批改。",
+                                buttons=(("知道了", "primary", "ok"),)).exec_()
+            return
+
+        existing_eval = data.get('evaluation') or {}
+        eval_result = grade_with_progress(self, recs, temp_pkg, vosk_model,
+                                          existing_eval=existing_eval, selection=selection)
+        if eval_result is None:
+            return
+        data['evaluation'] = eval_result
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+        cnt = sum(1 for _, _, card in checks if card.isChecked())
+        FluentMessageDialog(self, "重新批改完成",
+                            f"已重新批改 {cnt} 个题目。",
+                            buttons=(("知道了", "primary", "ok"),)).exec_()
+        self.load_history()
+
+    # ═══════════════════════ 练习详情（Fluent 卡片版）═══════════════════════
+    def view_detail(self, item):
+        """打开「练习详情」。优先用真控件渲染（有真圆角卡片），异常时回退旧 HTML 版。"""
+        path = item.data(0, Qt.UserRole)
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[DETAIL] 读取记录失败: {e}")
+            return
+        try:
+            body = self._detail_body(data)
+        except Exception as e:                      # 兜底：别让详情页打不开
+            print(f"[DETAIL] ⚠️ 控件版详情渲染失败，回退 HTML 版: {e}")
+            import traceback as _tb
+            _tb.print_exc()
+            self._detail_html_legacy(item)
+            return
+        self._detail_dialog(body)
+
+    def _detail_body(self, data):
+        """把一条记录拼成整页内容（若干张 Fluent 卡片）。"""
+        holder = QWidget()
+        holder.setObjectName("dBody")
+        holder.setStyleSheet("#dBody{background:transparent;}")
+        v = QVBoxLayout(holder)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(14)
+
+        v.addWidget(self._detail_head_card(data))
+        for card in (self._detail_recordings_card(data),
+                     self._detail_eval_card(data),
+                     self._detail_pkg_card(data)):
+            if card is not None:
+                v.addWidget(card)
+
+        note = _d_label("⚠ 批改结果基于离线语音识别，仅供参考。", 11, D_MUTED)
+        note.setAlignment(Qt.AlignCenter)
+        v.addWidget(note)
+        return holder
+
+    def _detail_head_card(self, data):
+        """顶部：题目包名 + 考试时间。"""
+        pkg_name = str(data.get('package', '') or '—')
+        ts = str(data.get('timestamp', '') or '')
+        ts_clean = ts.split('.')[0].replace('T', ' ') if ts else ''
+
+        f = QFrame()
+        f.setObjectName("dHead")
+        f.setStyleSheet(
+            "#dHead{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #EAF6FE,stop:1 #F6FBFF);"
+            "border:1px solid #D8EAF7;border-radius:14px;}")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(18, 13, 18, 14)
+        v.setSpacing(3)
+
+        top = QHBoxLayout()
+        top.setSpacing(8)
+        ic = QLabel()
+        ic.setFixedSize(18, 18)
+        ic.setStyleSheet("background:transparent;")
+        ic.setPixmap(_svg_pixmap(D_ICON_PKG, D_ACCENT_DEEP, 18))
+        top.addWidget(ic)
+        top.addWidget(_d_label("题目包", 12, D_SUB, wrap=False))
+        top.addStretch(1)
+        # 模式 + 篇目标签（与历史列表一致：模考/练习/专项 区分；专项额外标篇目）
+        # 练习/模考记录同样显示徽标；旧记录没有 mode 字段 → 按「练习」回退（早期版本不记录模式）
+        mode = data.get('mode', '') or 'practice'
+        mode_text = {"practice": "练习", "exam": "模考", "special": "专项训练"}.get(mode, mode)
+        if mode == "special" and data.get('parts'):
+            mode_text += "（" + "、".join("Part " + p for p in data['parts']) + "）"
+        top.addWidget(_d_chip(mode_text, fit=True))
+        if ts_clean:
+            top.addWidget(_d_label(ts_clean, 12, D_SUB, wrap=False))
+        v.addLayout(top)
+        v.addWidget(_d_label(pkg_name, 15, D_TEXT, medium=True, wrap=True))
+        return f
+
+    def _detail_recordings_card(self, data):
+        """录音文件卡片：左列 = Part A + 三问 + Part C，右列 = 五答。"""
+        rec = data.get('recordings', {}) or {}
+        left, right = [], []
+
+        pa = rec.get('partA', '')
+        if pa:
+            left.append(('Part A', os.path.basename(pa)))
+
+        pb = rec.get('partB', {})
+        if isinstance(pb, dict):
+            for k in ('PartB_Q1', 'PartB_Q2', 'PartB_Q3'):
+                val = pb.get(k)
+                if val:
+                    left.append((k.replace('PartB_', ''), os.path.basename(val)))
+            for k in ('PartB_A1', 'PartB_A2', 'PartB_A3', 'PartB_A4', 'PartB_A5'):
+                val = pb.get(k)
+                if val:
+                    right.append((k.replace('PartB_', ''), os.path.basename(val)))
+        elif isinstance(pb, list):
+            # 旧格式 list：前 3 个是三问，后 5 个是五答
+            for i, r in enumerate(pb):
+                it = (f'B{i + 1}', os.path.basename(r) if r else '')
+                (left if i < 3 else right).append(it)
+
+        pc = rec.get('partC', '')
+        if pc:
+            left.append(('Part C', os.path.basename(pc)))
+
+        if not (left or right):
+            return None
+
+        card, cv = _d_card('录音文件', D_ICON_MIC)
+        cols = QHBoxLayout()
+        cols.setSpacing(14)
+        for items in (left, right):
+            col = QVBoxLayout()
+            col.setSpacing(6)
+            for lab, fname in items:
+                col.addWidget(_d_chip(f'{lab}: {fname or "(无)"}'))
+            col.addStretch(1)
+            box = QWidget()
+            box.setStyleSheet("background:transparent;")
+            box.setLayout(col)
+            cols.addWidget(box, 1)
+        cv.addLayout(cols)
+        return card
+
+    def _detail_eval_card(self, data):
+        """批改结果卡片：总分横幅 + 左栏(A/B/C 得分) + 右栏(三问/五答逐题)。"""
+        ev = data.get('evaluation', {}) or {}
+        if not ev:
+            return None
+
+        PART_A_MAX, PART_B_PER_ITEM, PART_C_MAX = 20, 2, 24
+
+        acc_val = wer_val = acc_score = None
+        acc_color = D_SUB
+        if 'partA' in ev:
+            a = ev['partA']
+            acc_val = a.get('accuracy', 0) * 100
+            acc_score = a.get('accuracy', 0) * PART_A_MAX
+            wer_val = a.get('wer', 0)
+            acc_color = ('#c0392b' if acc_val < 60 else
+                         '#e67e22' if acc_val < 80 else '#27ae60')
+
+        def _mk_rows(key, prefix):
+            out = []
+            for i, t in enumerate(ev.get(key, []) or []):
+                sim = t.get('similarity', 0) if isinstance(t, dict) else 0
+                c = ('#c0392b' if sim < 0.6 else
+                     '#e67e22' if sim < 0.8 else '#27ae60')
+                out.append((f'{prefix}{i + 1}', sim, sim * PART_B_PER_ITEM, c))
+            return out
+
+        rows_three = _mk_rows('partB_three', '三问')
+        rows_five = _mk_rows('partB_five', '五答')
+        partB_max = (len(rows_three) + len(rows_five)) * PART_B_PER_ITEM
+        partB_score = (sum(p for _, _, p, _ in rows_three)
+                       + sum(p for _, _, p, _ in rows_five))
+
+        has_partC = 'partC' in ev
+        partC_score = partC_sim_pct = None
+        partC_color = D_SUB
+        if has_partC:
+            sem_sim = ev['partC'].get('semantic_sim')
+            if sem_sim is not None:
+                try:                       # 旧记录可能存成字符串
+                    sem_sim = float(sem_sim)
+                except (TypeError, ValueError):
+                    sem_sim = None
+            if sem_sim is not None:
+                partC_sim_pct = sem_sim * 100
+                partC_score = sem_sim * PART_C_MAX
+                partC_color = ('#4caf50' if sem_sim >= 0.8 else
+                               '#ff9800' if sem_sim >= 0.6 else '#f44336')
+
+        # 总分分母按实际训练篇目动态计算：专项训练只算选定篇目，避免 x.x/60 误导
+        TOTAL_MAX = ((PART_A_MAX if acc_score is not None else 0)
+                     + partB_max
+                     + (PART_C_MAX if has_partC else 0))
+        total_score = (acc_score or 0) + partB_score + (partC_score or 0)
+        total_ratio = total_score / TOTAL_MAX if TOTAL_MAX else 0
+        total_color = ('#c0392b' if total_ratio < 0.6 else
+                       '#e67e22' if total_ratio < 0.8 else '#27ae60')
+
+        card, cv = _d_card('批改结果', D_ICON_CHART)
+
+        # ── 总分横幅 ──
+        banner, bv = _d_panel('#F7FBFF', D_BD, radius=10,
+                              margins=(16, 12, 16, 12), spacing=0)
+        total_txt = (f'<span style="color:{D_SUB};font-size:15px">总分：</span>'
+                     f'<b style="font-size:24px;color:{total_color}">{total_score:.1f}</b>'
+                     f'<span style="color:{D_MUTED};font-size:14px">/{TOTAL_MAX}</span>')
+        lb_total = QLabel(total_txt)
+        lb_total.setTextFormat(Qt.RichText)
+        lb_total.setAlignment(Qt.AlignCenter)
+        lb_total.setStyleSheet("background:transparent;")
+        _bind_font(lb_total, 15)
+        bv.addWidget(lb_total)
+        cv.addWidget(banner)
+
+        # ── 左右双栏 ──
+        cols = QHBoxLayout()
+        cols.setSpacing(14)
+
+        # 左栏：Part A / Part B 总分 / Part C
+        lcol = QVBoxLayout()
+        lcol.setSpacing(9)
+        if acc_score is not None:
+            lcol.addWidget(_d_part_block(
+                'Part A 得分', acc_score, PART_A_MAX, acc_color,
+                f'准确率 {acc_val:.1f}%　WER: {wer_val:.2f}',
+                '#E3F2FD', '#C7E2F8', '#1565C0'))
+        if rows_three or rows_five:
+            lcol.addWidget(_d_part_block(
+                'Part B 总分', partB_score, partB_max, '#c06262',
+                f'{len(rows_three)} 问 + {len(rows_five)} 答，每题 {PART_B_PER_ITEM} 分',
+                '#F7DCDC', '#E8C4C4', '#a04a4a'))
+        if has_partC and partC_score is not None:
+            lcol.addWidget(_d_part_block(
+                'Part C 得分', partC_score, PART_C_MAX, partC_color,
+                f'匹配度 {partC_sim_pct:.1f}%　要点覆盖: '
+                f'{ev["partC"].get("coverage", "")}',
+                '#FFFDE7', '#EADFB0', '#8a6d1f'))
+        lcol.addStretch(1)
+        lbox = QWidget()
+        lbox.setStyleSheet("background:transparent;")
+        lbox.setLayout(lcol)
+        cols.addWidget(lbox, 1)
+
+        # 右栏：三问组 / 五答组
+        rcol = QVBoxLayout()
+        rcol.setSpacing(9)
+        for rows, bg, bd, bar in ((rows_three, '#FAF3FD', '#E6D3F0', '#9C27B0'),
+                                  (rows_five, '#F1F9F2', '#CDE8D2', '#4CAF50')):
+            if not rows:
+                continue
+            grp, gv = _d_panel(bg, bd, radius=10, margins=(8, 8, 8, 8), spacing=4)
+            for lab, sim, pts, c in rows:
+                gv.addWidget(_d_score_row(lab, sim, pts, c,
+                                          PART_B_PER_ITEM, bar))
+            rcol.addWidget(grp)
+        rcol.addStretch(1)
+        rbox = QWidget()
+        rbox.setStyleSheet("background:transparent;")
+        rbox.setLayout(rcol)
+        cols.addWidget(rbox, 1)
+
+        cv.addLayout(cols)
+        return card
+
+    def _detail_pkg_card(self, data):
+        """题目内容卡片：Part A 原文 / Part B 情景对话 / Part C 故事复述。
+
+        专项训练记录：只渲染本次选定的篇目 —— 未选篇目即便题目包里还有内容
+        （`to_dict()` 会输出空的 partB/partC 子字典，`if pb:` 判真就会画出空卡片），
+        一律不显示。非专项记录（练习/模考）不受影响，照旧全显示。
+        """
+        pkg = data.get('package_data', {}) or {}
+        if not pkg:
+            return None
+        card, cv = _d_card('题目内容', D_ICON_DOC)
+
+        # 专项训练：按记录的 parts 过滤；练习/模考 = None（不过滤）
+        _sel = (set(data.get('parts') or []) if data.get('mode') == 'special' else None)
+
+        def _on(letter):
+            return _sel is None or letter in _sel
+
+        # ── Part A 原文 ──
+        pa = pkg.get('partA', {}) or {}
+        if pa and _on('A'):
+            body, bv = _d_panel('#F4F9FE', '#D8E8F6', margins=(14, 12, 14, 13))
+            bv.addWidget(_d_label(str(pa.get('hidden_text', '无')),
+                                  13, '#22333F', wrap=True, selectable=True))
+            cv.addWidget(_d_section('Part A 原文', '#1565C0', body))
+
+        # ── Part B 情景对话 ──
+        pb = pkg.get('partB', {}) or {}
+        if pb and _on('B'):
+            wrap = QWidget()
+            wrap.setStyleSheet("background:transparent;")
+            wv = QVBoxLayout(wrap)
+            wv.setContentsMargins(0, 0, 0, 0)
+            wv.setSpacing(10)
+
+            sit, sv = _d_panel('#FFF9E8', '#F0E3B8', margins=(13, 10, 13, 11))
+            sv.addWidget(_d_label(str(pb.get('situation', '无')),
+                                  13, '#4A3C12', wrap=True, selectable=True))
+            wv.addWidget(_d_section('情景', '#B8860B', sit))
+
+            lt = pb.get('listening_text', '')
+            if lt:
+                ltp, lv = _d_panel('#F1F7FC', '#D5E5F2', margins=(13, 10, 13, 11))
+                lv.addWidget(_d_label(str(lt), 13, '#22333F',
+                                      wrap=True, selectable=True))
+                wv.addWidget(_d_section('听原文', '#1565C0', ltp))
+
+            three_q = pb.get('three_questions', []) or []
+            if three_q:
+                p, pv = _d_panel('#FAF3FD', '#E6D3F0', margins=(10, 9, 10, 10), spacing=4)
+                for i, q in enumerate(three_q):
+                    pv.addWidget(self._detail_qa_row(
+                        f'Q{i + 1}', q.get('cn_prompt', ''), q.get('hidden_answer', ''),
+                        '#9C27B0'))
+                wv.addWidget(_d_section('三问', '#8E44AD', p))
+
+            five_a = pb.get('five_answers', []) or []
+            if five_a:
+                p, pv = _d_panel('#F1F9F2', '#CDE8D2', margins=(10, 9, 10, 10), spacing=4)
+                for i, a in enumerate(five_a):
+                    pv.addWidget(self._detail_qa_row(
+                        f'A{i + 1}', a.get('en_question', ''), a.get('hidden_answer', ''),
+                        '#4CAF50'))
+                wv.addWidget(_d_section('五答', '#16A085', p))
+
+            cv.addWidget(_d_section('Part B 情景对话', '#B26A00', wrap))
+
+        # ── Part C 故事复述 ──
+        pc = pkg.get('partC', {}) or {}
+        if pc and _on('C'):
+            body, bv = _d_panel('#FBFCFD', '#E5EBF1',
+                                margins=(14, 12, 14, 13), spacing=8)
+            rows = [('梗概', pc.get('summary', '无'), '#F7F9FB'),
+                    ('关键词', pc.get('keywords', '无'), '#F7F9FB')]
+            story = pc.get('tts_text', '')
+            if story:
+                rows.append(('故事全文', story, '#F7F9FB'))
+            kp = pc.get('key_points', '')
+            if kp:
+                rows.append(('答案要点', kp, '#FFFDE7'))
+            for lab, val, bg in rows:
+                r = QHBoxLayout()
+                r.setSpacing(10)
+                lb_lab = _d_label(lab, 12, D_SUB, wrap=False)
+                lb_lab.setFixedWidth(62)
+                lb_lab.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+                r.addWidget(lb_lab)
+                vp, vv = _d_panel(bg, '#E9EEF3', radius=8,
+                                  margins=(11, 8, 11, 9), spacing=0)
+                vv.addWidget(_d_label(str(val), 13, '#22333F',
+                                      wrap=True, selectable=True))
+                r.addWidget(vp, 1)
+                bv.addLayout(r)
+            cv.addWidget(_d_section('Part C 故事复述', '#C0392B', body))
+
+        # 三个 Part 一个都没有 → 这张卡没必要出现
+        if cv.count() <= 2:          # 2 = 标题行 + 分割线
+            card.deleteLater()
+            return None
+        return card
+
+    def _detail_qa_row(self, tag, prompt, answer, color):
+        """题目内容里的「Q1 中文提示 → 隐藏答案」一行。"""
+        f = QFrame()
+        f.setObjectName("dQA")
+        f.setStyleSheet(f"#dQA{{background:#FFFFFF;border:none;"
+                        f"border-left:4px solid {color};border-radius:6px;}}")
+        h = QHBoxLayout(f)
+        h.setContentsMargins(12, 8, 12, 8)
+        h.setSpacing(12)
+
+        head = QLabel(f"<b style='color:{color}'>{tag}</b>")
+        head.setTextFormat(Qt.RichText)
+        _bind_font(head, 12)
+        head.setStyleSheet("background:transparent;")
+        head.setFixedWidth(88)
+        head.setWordWrap(True)
+        head.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        h.addWidget(head)
+
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        if prompt:
+            col.addWidget(_d_label(str(prompt), 12, D_SUB, wrap=True, selectable=True))
+        col.addWidget(_d_label(str(answer), 13, '#22333F',
+                               wrap=True, selectable=True))
+        h.addLayout(col, 1)
+        return f
+
+    def _detail_dialog(self, body):
+        """详情对话框外壳：渐变底 + 缓动滚动 + Fluent 滚动条 + 主色关闭按钮。"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("练习详情")
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.resize(920, 740)
+        dialog.setMinimumSize(640, 470)
+
+        root = QWidget(dialog)
+        root.setObjectName("dtRoot")
+        root.setStyleSheet(
+            f"#dtRoot{{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f"stop:0 {D_BG_TOP},stop:1 {D_BG_BOT});}}")
+        rv = QVBoxLayout(root)
+        rv.setContentsMargins(0, 0, 0, 0)
+        rv.setSpacing(0)
+
+        area = QScrollArea(root)
+        area.setObjectName("dtScroll")
+        area.setWidgetResizable(True)
+        area.setFrameShape(QFrame.NoFrame)
+        area.setStyleSheet("#dtScroll{background:transparent;border:none;}")
+        area.viewport().setStyleSheet("background:transparent;")   # 视口才是真正露底的地方
+
+        holder = QWidget()
+        holder.setObjectName("dtHolder")
+        holder.setStyleSheet("#dtHolder{background:transparent;}")
+        hv = QVBoxLayout(holder)
+        hv.setContentsMargins(16, 15, 16, 16)      # 底部留够，滚到最后一行不会被按钮压住
+        hv.setSpacing(14)
+        hv.addWidget(body)
+        hv.addStretch(1)
+        area.setWidget(holder)
+        _SmoothScroll(area)          # 对话框是运行时新建的，要手动挂缓动滚动
+        rv.addWidget(area, 1)
+
+        # 底部工具条：白底 + 顶部一根细线。用 QFrame 而不是 QWidget ——
+        # ⚠️ QWidget 的 QSS 只认 background/background-clip，**border 不生效**。
+        foot = QFrame()
+        foot.setObjectName("dtFoot")
+        foot.setStyleSheet(
+            f"#dtFoot{{background:{D_CARD};border:none;"
+            f"border-top:1px solid {D_LINE};}}")
+        fv = QVBoxLayout(foot)
+        fv.setContentsMargins(16, 12, 16, 14)      # 上 12 / 下 14：按钮不再贴着内容
+        btn_close = QPushButton("关闭")
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setFixedHeight(38)
+        btn_close.setMinimumWidth(132)
+        _bind_font(btn_close, 14, medium=True)
+        btn_close.setStyleSheet(
+            f"QPushButton{{background:{D_ACCENT_DEEP};color:#fff;border:none;"
+            f"border-radius:10px;padding:0 26px;}}"
+            f"QPushButton:hover{{background:#0A8AD0;}}"
+            f"QPushButton:pressed{{background:#0979B8;}}")
+        btn_close.clicked.connect(dialog.close)
+        fv.addWidget(btn_close, alignment=Qt.AlignCenter)
+        rv.addWidget(foot)
+
+        outer = QVBoxLayout(dialog)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(root)
+        dialog.exec_()
+
+    # ── 旧版 HTML 渲染（QTextBrowser 不支持圆角，仅作异常兜底保留）──
+    def _detail_html_legacy(self, item):
+        path = item.data(0, Qt.UserRole)
+        if not path or not os.path.exists(path):
+            return
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # ---- 构建 HTML 详情 ----
+        # ⚠ QTextBrowser (Qt WebKit) 仅支持基础 CSS：
+        #   ✅ solid background-color / border / border-radius / padding / margin
+        #   ✅ font-size / color / font-weight / text-align
+        #   ✅ table 布局
+        #   ❌ linear-gradient / display:flex / flex-wrap / rgba / opacity / gap
+        h = []
+
+        # ═══════════════ 头部 ═══════════════
+        pkg_name = _esc(data.get('package', ''))
+        ts = _esc(data.get('timestamp', ''))
+        # 去除时间戳中的毫秒等无关内容，仅保留「年-月-日 时:分:秒」
+        ts_clean = ts.split('.')[0].replace('T', ' ') if ts else ''
+        h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                 ' style="background:#5b4fcf;border-radius:8px;margin-bottom:12px">'
+                 '<tr><td style="padding:14px 18px;color:#fff">'
+                 f'<span style="font-size:16px;font-weight:bold">📋 题目包：{pkg_name}</span>'
+                 f'<span style="font-size:12px;color:#d0c8ff;margin-left:12px"> {ts_clean}</span>'
+                 '</td></tr></table>')
+
+        # ═══════════════ 录音文件 — 左右双栏（左=A+3Q+C，右=五答） ═══════════════
+        rec = data.get('recordings', {})
+        # 分两组：左边 = Part A + 三问(Q1-Q3) + Part C，右边 = 五答(A1-A5)
+        left_items = []   # Part A, Q1-Q3, Part C
+        right_items = []  # A1-A5
+
+        pa = rec.get('partA', '')
+        if pa:
+            left_items.append(('Part A', os.path.basename(pa)))
+
+        partB_raw = rec.get('partB', {})
+        if isinstance(partB_raw, dict):
+            for k in ['PartB_Q1','PartB_Q2','PartB_Q3']:
+                v = partB_raw.get(k)
+                if v is not None:
+                    left_items.append((k.replace('PartB_', ''), os.path.basename(v)))
+            for k in ['PartB_A1','PartB_A2','PartB_A3','PartB_A4','PartB_A5']:
+                v = partB_raw.get(k)
+                if v is not None:
+                    right_items.append((k.replace('PartB_', ''), os.path.basename(v)))
+        elif isinstance(partB_raw, list):
+            # list 格式：前 3 个归左(三问)，后 5 个归右(五答)
+            for i, r in enumerate(partB_raw):
+                item = (f'B{i+1}', os.path.basename(r) if r else '')
+                if i < 3:
+                    left_items.append(item)
+                else:
+                    right_items.append(item)
+
+        pc_rec = rec.get('partC', '')
+        if pc_rec:
+            left_items.append(('Part C', os.path.basename(pc_rec)))
+
+        all_rec = left_items + right_items
+        if all_rec:
+            # ═══ 录音文件 — 独立卡片，左右双栏（左=A+Q+C，右=五答） ═══
+            h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                     ' style="background:#fff;border:2px solid #bbb;border-radius:8px;margin-bottom:16px">'
+                     '<tr><td style="background:#e8eaef;padding:10px 14px;'
+                     'border-bottom:2px solid #bbb;border-radius:8px 8px 0 0">'
+                     '<span style="font-size:15px;font-weight:bold;color:#222">🎙 录音文件</span>'
+                     '</td></tr>'
+                     '<tr><td style="padding:12px 14px">')
+
+            # 左右双栏（不强制均分，按内容自适应）
+            h.append('<table width="100%" cellpadding="0" cellspacing="0"><tr>')
+
+            # ── 左栏：Part A + Q1-Q3 + Part C ──
+            h.append('<td valign="top" style="padding-right:10px">')
+            h.append('<table cellpadding="4" cellspacing="3" style="font-size:12px">')
+            for lab, fname in left_items:
+                display = fname if fname else '(无)'
+                h.append(f'<tr><td style="background:#eef2ff;border:1px solid #b0bec5;'
+                         f'border-radius:4px;padding:5px 9px;color:#283593;word-break:break-all">'
+                         f'<b>{lab}</b>: {_esc(display)}</td></tr>')
+            h.append('</table></td>')
+
+            # ── 右栏：A1-A5 ──
+            h.append('<td valign="top" style="padding-left:10px">')
+            h.append('<table cellpadding="4" cellspacing="3" style="font-size:12px">')
+            for lab, fname in right_items:
+                display = fname if fname else '(无)'
+                h.append(f'<tr><td style="background:#eef2ff;border:1px solid #b0bec5;'
+                         f'border-radius:4px;padding:5px 9px;color:#283593;word-break:break-all">'
+                         f'<b>{lab}</b>: {_esc(display)}</td></tr>')
+            h.append('</table></td>')
+
+            h.append('</tr></table></td></tr></table>')
+
+        # ═══════════════ 批改结果 — 左右双栏布局 ═══════════════
+        ev = data.get('evaluation', {})
+        if ev:
+            # ---- 外层容器 ----
+            h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                     ' style="background:#fff;border:2px solid #bbb;border-radius:8px;margin-bottom:16px">'
+                     '<tr><td style="background:#e8eaef;padding:10px 14px;'
+                     'border-bottom:2px solid #bbb;border-radius:8px 8px 0 0">'
+                     '<span style="font-size:15px;font-weight:bold;color:#222">📊 批改结果</span>'
+                     '</td></tr>'
+                     '<tr><td style="padding:14px 16px">')
+
+            # ── 收集数据（满分制：A=20, B每题=2/B总=16, C=24）──
+            PART_A_MAX = 20
+            PART_B_PER_ITEM = 2
+            PART_C_MAX = 24
+
+            acc_val, wer_val, acc_score, acc_color, acc_bg = None, None, None, '#999', '#f5f5f5'
+            if 'partA' in ev:
+                a = ev['partA']
+                acc_val = a.get('accuracy', 0) * 100          # 百分比
+                acc_score = a.get('accuracy', 0) * PART_A_MAX   # 满分制得分
+                wer_val = a.get('wer', 0)
+                acc_color = '#c0392b' if acc_val < 60 else '#e67e22' if acc_val < 80 else '#27ae60'
+                acc_bg = '#fce4ec' if acc_val < 60 else '#fff3e0' if acc_val < 80 else '#e8f5e9'
+
+            # Part B：每项存 (标签, 相似度, 得分, 颜色)
+            rows_three = []
+            if 'partB_three' in ev:
+                for i, t in enumerate(ev['partB_three']):
+                    sim = t.get('similarity', 0)
+                    pts = sim * PART_B_PER_ITEM
+                    c = '#c0392b' if sim < 0.6 else '#e67e22' if sim < 0.8 else '#27ae60'
+                    rows_three.append((f'三问{i+1}', sim, pts, c))
+            rows_five = []
+            if 'partB_five' in ev:
+                for i, fv in enumerate(ev['partB_five']):
+                    sim = fv.get('similarity', 0)
+                    pts = sim * PART_B_PER_ITEM
+                    c = '#c0392b' if sim < 0.6 else '#e67e22' if sim < 0.8 else '#27ae60'
+                    rows_five.append((f'五答{i+1}', sim, pts, c))
+            partB_total_items = len(rows_three) + len(rows_five)
+            partB_max = partB_total_items * PART_B_PER_ITEM       # 标准 16
+            partB_score = (sum(p for _, _, p, _ in rows_three)
+                           + sum(p for _, _, p, _ in rows_five))
+
+            has_partC = 'partC' in ev
+            partC_score = None
+            partC_sim_pct = None
+            partC_color = '#999'
+            if has_partC:
+                sem_sim = ev["partC"].get("semantic_sim")
+                if sem_sim is not None:
+                    # 兼容旧记录（可能为字符串）和新格式（float 0~1）
+                    try:
+                        sem_sim = float(sem_sim)
+                    except (TypeError, ValueError):
+                        sem_sim = None
+                if sem_sim is not None:
+                    partC_sim_pct = sem_sim * 100
+                    partC_score = sem_sim * PART_C_MAX
+                    partC_color = "#4caf50" if sem_sim >= 0.8 else ("#ff9800" if sem_sim >= 0.6 else "#f44336")
+
+            # ── 总分横幅（跨全宽，放在左右双栏上方）──
+            TOTAL_MAX = PART_A_MAX + partB_max + PART_C_MAX   # 标准 60
+            total_score = 0.0
+            if acc_score is not None:
+                total_score += acc_score
+            total_score += partB_score
+            if partC_score is not None:
+                total_score += partC_score
+            total_ratio = total_score / TOTAL_MAX if TOTAL_MAX else 0
+            total_color = '#c0392b' if total_ratio < 0.6 else '#e67e22' if total_ratio < 0.8 else '#27ae60'
+
+            h.append(f'<table width="100%" cellpadding="0" cellspacing="0"'
+                     f' style="border:1.5px solid #9FA8DA;border-radius:8px;background:#E8EAF6;margin-bottom:10px"><tr>'
+                     f'<td style="padding:12px 18px;font-size:15px;color:#333;font-weight:bold;white-space:nowrap;text-align:center">'
+                     f'总分：<b style="font-size:20px;color:{total_color}">{total_score:.1f}/{TOTAL_MAX}</b>'
+                     f'</td></tr></table>')
+
+            # ── 左右双栏（强制 50/50）：左=A+B总分+C，右=3Q+5A ──
+            h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                     ' style="table-layout:fixed">')
+
+            # ═══ 左栏 (50%)：Part A → Part B 总分 → Part C ═══
+            h.append('<tr><td valign="top" style="width:50%;padding-right:10px">')
+
+            # --- Part A 得分（蓝底）---
+            if acc_score is not None:
+                h.append(f'<table width="100%" cellpadding="0" cellspacing="0"'
+                         f' style="border:1.5px solid #ccc;border-radius:6px;background:#e3f2fd;margin-bottom:8px"><tr>'
+                         f'<td style="padding:10px 14px;font-size:14px;color:#333;font-weight:bold;vertical-align:middle;white-space:nowrap">'
+                         f'Part A 得分：<b style="font-size:18px;color:{acc_color}">{acc_score:.1f}/{PART_A_MAX}</b>'
+                         f'</td></tr><tr>'
+                         f'<td colspan="2" style="padding:4px 14px 10px;font-size:12px;color:#666;border-top:1px solid rgba(0,0,0,.08)">'
+                         f'准确率 {acc_val:.1f}% &nbsp;&nbsp; WER: {wer_val:.2f}'
+                         f'</td></tr></table>')
+
+            # --- Part B 总分（固定浅粉底）---
+            if rows_three or rows_five:
+                partB_accent = '#c06262'
+                h.append(f'<table width="100%" cellpadding="0" cellspacing="0"'
+                         f' style="border:1.5px solid #e8c4c4;border-radius:6px;background:#F5D5D5;margin-bottom:10px"><tr>'
+                         f'<td style="padding:10px 14px;font-size:14px;color:#333;font-weight:bold;vertical-align:middle">'
+                         f'Part B 总分：<b style="font-size:18px;color:{partB_accent}">{partB_score:.1f}/{partB_max}</b>'
+                         f'</td></tr><tr>'
+                         f'<td style="padding:4px 14px 10px;font-size:12px;color:#666;border-top:1px solid rgba(0,0,0,.08)">'
+                         f'{len(rows_three)} 问 + {len(rows_five)} 答，每题 {PART_B_PER_ITEM} 分'
+                         f'</td></tr></table>')
+
+            # --- Part C（黄底；上面得分，下面匹配度+要点覆盖）---
+            if has_partC and partC_score is not None:
+                cov = _esc(ev["partC"].get("coverage", ""))
+                h.append(f'<table width="100%" cellpadding="0" cellspacing="0"'
+                         f' style="border:1.5px solid #ccc;border-radius:6px;background:#fffde7;margin-bottom:8px"><tr>'
+                         f'<td style="padding:10px 14px;font-size:14px;color:#333;font-weight:bold;vertical-align:middle">'
+                         f'Part C 得分：<b style="font-size:18px;color:{partC_color}">{partC_score:.1f}/{PART_C_MAX}</b>'
+                         f'</td></tr><tr>'
+                         f'<td style="padding:4px 14px 10px;font-size:12px;color:#666;border-top:1px solid rgba(0,0,0,.08)">'
+                         f'匹配度 {partC_sim_pct:.1f}% &nbsp;&nbsp; 要点覆盖: {cov}'
+                         f'</td></tr></table>')
+
+            h.append('</td>')  # 关闭左栏
+
+            # ═══ 右栏 (50%)：三问 → 五答 ═══
+            h.append('<td valign="top" style="width:50%;padding-left:10px">')
+
+            # --- 三问（匹配度 + 得分）---
+            if rows_three:
+                h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                         ' style="border:1.5px solid #e1bee7;border-radius:6px;background:#fdf2ff;margin-bottom:8px">')
+                for lab, sim, pts, c in rows_three:
+                    h.append(f'<tr><td style="background:#fdf2ff;border-left:5px solid #9c27b0;'
+                             f'padding:7px 12px;font-size:13px">'
+                             f'{lab} 匹配度：<b>{sim*100:.1f}%</b>'
+                             f' &nbsp;得分：<b style="color:{c};font-size:15px">{pts:.1f}/{PART_B_PER_ITEM}</b>'
+                             f'</td></tr>')
+                h.append('</table>')
+
+            # --- 五答 ---
+            if rows_five:
+                h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                         ' style="border:1.5px solid #a5d6a7;border-radius:6px;background:#e8f5e9">')
+                for lab, sim, pts, c in rows_five:
+                    h.append(f'<tr><td style="background:#e8f5e9;border-left:5px solid #4caf50;'
+                             f'padding:7px 12px;font-size:13px">'
+                             f'{lab} 匹配度：<b>{sim*100:.1f}%</b>'
+                             f' &nbsp;得分：<b style="color:{c};font-size:15px">{pts:.1f}/{PART_B_PER_ITEM}</b>'
+                             f'</td></tr>')
+                h.append('</table>')
+
+            h.append('</td></tr>')  # 关闭右栏 + 行
+            h.append('</table>')  # 关闭左右双栏
+
+            h.append('</td></tr></table>')  # 关闭外层容器
+
+        # ═══════════════ 题目内容 — 粗边框卡片 ═══════════════
+        pkg = data.get('package_data', {})
+        if pkg:
+            h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                     ' style="background:#fff;border:2px solid #bbb;border-radius:8px;margin-bottom:14px">'
+                     '<tr><td style="background:#e8eaef;padding:10px 14px;'
+                     'border-bottom:2px solid #bbb;border-radius:8px 8px 0 0">'
+                     '<span style="font-size:15px;font-weight:bold;color:#222">📝 题目内容</span>'
+                     '</td></tr>'
+                     '<tr><td style="padding:14px 16px">')
+
+            pa = pkg.get('partA', {})
+            if pa:
+                # ═══ Part A 独立卡片 ═══
+                h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                         ' style="border:2px solid #3498db;border-radius:6px;margin-bottom:12px">'
+                         '<tr><td style="background:#3498db;padding:7px 14px;'
+                         'border-radius:4px 4px 0 0">'
+                         '<span style="font-size:14px;font-weight:bold;color:#fff">📘 Part A 原文</span>'
+                         '</td></tr><tr><td style="padding:10px 14px;background:#f4f8fb;'
+                         'font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all">'
+                         f'{_esc(pa.get("hidden_text", "无"))}'
+                         '</td></tr></table>')
+
+            pb = pkg.get('partB', {})
+            if pb:
+                # ═══ Part B 独立卡片 ═══
+                h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                         ' style="border:2px solid #f39c12;border-radius:6px;margin-bottom:12px">'
+                         '<tr><td style="background:#f39c12;padding:7px 14px;'
+                         'border-radius:4px 4px 0 0">'
+                         '<span style="font-size:14px;font-weight:bold;color:#fff">📙 Part B 情景对话</span>'
+                         '</td></tr><tr><td style="padding:10px 14px">')
+
+                h.append(f'<div style="background:#fef9e7;border-left:4px solid #f1c40f;'
+                         f'padding:8px 12px;margin-bottom:8px;font-size:13px;line-height:1.6">'
+                         f'{_esc(pb.get("situation", "无"))}</div>')
+
+                lt = pb.get('listening_text', '')
+                if lt:
+                    h.append(f'<div style="background:#eaf2f8;border-left:4px solid #3498db;'
+                             f'padding:8px 12px;margin-bottom:8px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-all">'
+                             f'{_esc(lt)}</div>')
+
+                three_q = pb.get('three_questions', [])
+                if three_q:
+                    h.append('<div style="margin-bottom:6px;font-size:13px;font-weight:bold;color:#8e44ad">三问</div>')
+                    h.append('<table width="100%" cellpadding="0" cellspacing="3"'
+                             ' style="background:#fdf2ff;border:1px solid #e1bee7;border-radius:4px;margin-bottom:8px">')
+                    for i, q in enumerate(three_q):
+                        prompt = q.get('cn_prompt', '')
+                        answer = q.get('hidden_answer', '')
+                        h.append(f'<tr>'
+                                 f'<td style="padding:5px 10px;white-space:nowrap;color:#8e44ad;font-size:12px;width:35%">'
+                                 f'<b>Q{i+1}</b> {_esc(prompt)}</td>'
+                                 f'<td style="padding:5px 10px;font-size:12px;line-height:1.6;border-top:1px solid #f3e5f5">'
+                                 f'{_esc(answer)}</td></tr>')
+                    h.append('</table>')
+
+                five_a = pb.get('five_answers', [])
+                if five_a:
+                    h.append('<div style="margin-bottom:6px;font-size:13px;font-weight:bold;color:#16a085">五答</div>')
+                    h.append('<table width="100%" cellpadding="0" cellspacing="3"'
+                             ' style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px">')
+                    for i, a in enumerate(five_a):
+                        question = a.get('en_question', '')
+                        answer = a.get('hidden_answer', '')
+                        h.append(f'<tr>'
+                                 f'<td style="padding:5px 10px;white-space:nowrap;color:#16a085;font-size:12px;width:35%">'
+                                 f'<b>A{i+1}</b> {_esc(question)}</td>'
+                                 f'<td style="padding:5px 10px;font-size:12px;line-height:1.6;border-top:1px solid #c8e6c9">'
+                                 f'{_esc(answer)}</td></tr>')
+                    h.append('</table>')
+
+                h.append('</td></tr></table>')
+
+            pc = pkg.get('partC', {})
+            if pc:
+                # ═══ Part C 独立卡片 ═══
+                h.append('<table width="100%" cellpadding="0" cellspacing="0"'
+                         ' style="border:2px solid #e74c3c;border-radius:6px;margin-bottom:8px">'
+                         '<tr><td style="background:#e74c3c;padding:7px 14px;'
+                         'border-radius:4px 4px 0 0">'
+                         '<span style="font-size:14px;font-weight:bold;color:#fff">📕 Part C 故事复述</span>'
+                         '</td></tr><tr><td style="padding:10px 14px">')
+                h.append('<table width="100%" cellpadding="4" cellspacing="2">')
+                h.append(f'<tr><td width="70" style="color:#666;font-size:13px">梗概</td>'
+                         f'<td style="background:#f8f9fa;border-radius:4px;padding:6px 10px;'
+                         f'font-size:13px;line-height:1.5">{_esc(pc.get("summary", "无"))}</td></tr>')
+                h.append(f'<tr><td style="color:#666;font-size:13px">关键词</td>'
+                         f'<td style="background:#f8f9fa;border-radius:4px;padding:6px 10px;'
+                         f'font-size:13px;line-height:1.5">{_esc(pc.get("keywords", "无"))}</td></tr>')
+                story = pc.get('tts_text', '')
+                if story:
+                    h.append(f'<tr><td style="vertical-align:top;color:#666;font-size:13px">故事全文</td>'
+                             f'<td style="background:#f8f9fa;border-radius:4px;padding:8px 12px;'
+                             f'font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-all">'
+                             f'{_esc(story)}</td></tr>')
+                kp = pc.get('key_points', '')
+                if kp:
+                    h.append(f'<tr><td style="vertical-align:top;color:#666;font-size:13px">答案要点</td>'
+                             f'<td style="background:#fffde7;border-radius:4px;padding:8px 12px;'
+                             f'font-size:13px;line-height:1.6">{_esc(kp)}</td></tr>')
+                h.append('</table>')
+                h.append('</td></tr></table>')
+
+            h.append('</td></tr></table>')
+
+        h.append('<div style="margin-top:14px;text-align:center;font-size:11px;color:#aaa;padding-bottom:4px">'
+                 '⚠ 批改结果基于离线语音识别，仅供参考。')
+
+        self._show_detail_dialog('\n'.join(h), is_html=True)
+
+    def _show_detail_dialog(self, content, is_html=False):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("练习详情")
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        dialog.resize(880, 720)
+        dialog.setMinimumSize(600, 440)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        # 浅灰外框
+        outer = QWidget()
+        outer.setStyleSheet("background:#f5f6fa")
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(14, 12, 14, 8)
+
+        browser = QTextBrowser(outer)
+        browser.setFont(QFont("Microsoft YaHei", 11))
+        if is_html:
+            browser.setHtml(content)
+        else:
+            browser.setPlainText(content)
+        browser.setOpenExternalLinks(False)
+        browser.setStyleSheet("QTextBrowser { background:transparent; border:none; }")
+
+        outer_layout.addWidget(browser)
+
+        btn_close = QPushButton("  关闭  ", outer)
+        btn_close.setFont(QFont("Microsoft YaHei", 11))
+        btn_close.setMinimumHeight(36)
+        btn_close.clicked.connect(dialog.close)
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background: #5b4fcf;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+                padding: 6px 28px;
+            }
+            QPushButton:hover { background: #4a3eb8; }
+            QPushButton:pressed { background: #3d32a0; }
+        """)
+        outer_layout.addWidget(btn_close, alignment=Qt.AlignCenter)
+
+        layout.addWidget(outer)
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+
+def _esc(s):
+    """HTML 转义，防止 XSS 和排版破坏"""
+    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')\
+                  .replace('"', '&quot;').replace('\n', '<br>')
+
+
+def _vosk_model_ansi(path):
+    """用 ANSI 代码页重试加载 vosk 模型 —— 兼容含中文等非 ASCII 字符的路径。
+
+    ❗根因（2026-10-01 实测定位）：`vosk.Model(path)` 内部只是
+    `_c.vosk_model_new(path.encode("utf-8"))`，真正解析路径的是 **libvosk.dll
+    (C++/Kaldi) 里的原生文件 API** —— Windows 上它按「ANSI 代码页」(简中=GBK)
+    解释路径字节，拿到 UTF-8 字节串就乱码 → 找不到目录 → 返回 NULL →
+    `raise Exception("Failed to create a model")`。
+    实测（中文目录 + 同一份完整模型）：
+        vosk_model_new(path.encode("utf-8")) -> NULL
+        vosk_model_new(path.encode("mbcs"))  -> 句柄有效
+    推论：① 路径用 `os.path` 还是 `pathlib` 拼**完全无关**，瓶颈在 C 库编码；
+          ② 路径只要含中文，标准调用必失败（哪怕模型目录存在、路径合法）。
+    这里跳过 vosk 封装，直接用 cffi 接口传 ANSI 编码路径。
+    """
+    try:
+        import vosk as _v
+    except Exception:
+        return None
+    for enc in ("mbcs", "cp936"):
+        try:
+            h = _v._c.vosk_model_new(path.encode(enc))
+        except Exception:
+            continue
+        if h != _v._ffi.NULL:
+            m = _v.Model.__new__(_v.Model)
+            m._handle = h        # 交给 Model.__del__ 正常释放
+            return m
+    return None
+
+
+def load_vosk_model():
+    if not VOSK_AVAILABLE:
+        return None
+    if not os.path.exists(MODEL_PATH):
+        return None
+    try:
+        return Model(MODEL_PATH)
+    except Exception as e:
+        # 中文路径兜底：改用 ANSI 编码重试（详见 _vosk_model_ansi 注释）
+        m = _vosk_model_ansi(MODEL_PATH)
+        if m is not None:
+            print(f"[VOSK] 路径含非 ASCII 字符，已用 ANSI 兼容模式加载模型: {MODEL_PATH}")
+            return m
+        print(f"[VOSK] 模型加载失败: {type(e).__name__}: {e}")
+        return None
+
+# ===== 更新检查（仅提示，不自动下载/替换）=====
+APP_VERSION = "2.4"   # 当前版本号；发布新版本时只改这一处
+# version.json 放在 GitHub 仓库根目录。更新源顺序：
+#   1) GitHub API：读实时文件、无 CDN 缓存，改完立即生效（优先）；
+#   2) jsDelivr：国内直连快，但有缓存，作兜底；
+#   3) raw.githubusercontent：常被墙，最后兜底。
+# 按顺序取第一个返回合法 version.json 的源（全部失败则跳过本次检查，不影响使用）。
+UPDATE_INFO_URLS = [
+    "https://api.github.com/repos/FallingLighty/SoloTalk/contents/version.json?ref=main",
+    "https://cdn.jsdelivr.net/gh/FallingLighty/SoloTalk@main/version.json",
+    "https://fastly.jsdelivr.net/gh/FallingLighty/SoloTalk@main/version.json",
+    "https://raw.githubusercontent.com/FallingLighty/SoloTalk/main/version.json",
+]
+UPDATE_INFO_URL = UPDATE_INFO_URLS[0]   # 兼容旧引用/日志展示
+# 平台通道：桌面版读 desktop；手机/安卓版打包时把该值改为 "mobile"
+CHANNEL = "mobile" if hasattr(sys, "getandroidapilevel") else "desktop"
+
+
+class UpdateChecker(QThread):
+    update_available = pyqtSignal(dict)   # {version, notes, url}
+    no_update = pyqtSignal()              # 检查完成：已是最新（供手动检查给提示）
+    check_failed = pyqtSignal(str)        # 检查完成：无法获取更新信息（网络/源不可用/解析失败）
+
+    def run(self):
+        print(f"[UPDATE] 开始检查更新（通道={CHANNEL}，本机版本={APP_VERSION}）")
+        data = None
+        for url in UPDATE_INFO_URLS:
+            try:
+                # 加时间戳绕开 CDN 缓存，尽量读到最新提交（对 GitHub API 无害）
+                _sep = "&" if "?" in url else "?"
+                _url = f"{url}{_sep}t={int(time.time())}"
+                req = urllib.request.Request(
+                    _url,
+                    headers={"User-Agent": f"SoloTalk/{APP_VERSION}"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    text = resp.read().decode("utf-8")
+                parsed = json.loads(text)
+                # GitHub API 返回的是包装结构：{content: base64, encoding: "base64", ...}
+                if isinstance(parsed, dict) and parsed.get("encoding") == "base64" and "content" in parsed:
+                    import base64
+                    parsed = json.loads(base64.b64decode(parsed["content"]).decode("utf-8"))
+                # 校验是否为合法的 version.json（必须含 desktop / mobile 通道）
+                if not (isinstance(parsed, dict) and ("desktop" in parsed or "mobile" in parsed)):
+                    raise ValueError("version.json 结构异常")
+                data = parsed
+                print(f"[UPDATE] version.json 读取成功（来源: {url}）")
+                break
+            except Exception as e:
+                print(f"[UPDATE] 该源不可用，换下一个: {url}  ({type(e).__name__}: {e})")
+        if data is None:
+            print("[UPDATE] 所有更新源均不可用（已忽略，不影响使用）")
+            self.check_failed.emit("无法连接更新服务器（所有更新源均不可用）")
+            return
+        try:
+            info = data.get(CHANNEL, data.get("desktop", {}))
+            if not info:
+                print(f"[UPDATE] version.json 缺少 {CHANNEL} 通道信息，跳过")
+                self.check_failed.emit(f"更新信息缺少 {CHANNEL} 通道")
+                return
+            latest = str(info.get("version", ""))
+            if latest and self._is_newer(latest, APP_VERSION):
+                print(f"[UPDATE] 发现新版本 {latest}（本机 {APP_VERSION}），下载链接: {info.get('url', '')}")
+                self.update_available.emit({
+                    "version": latest,
+                    "notes": info.get("notes", ""),
+                    "url": info.get("url", ""),
+                })
+            else:
+                print(f"[UPDATE] 已是最新（本机 {APP_VERSION} >= 远端 {latest}），无需更新")
+                self.no_update.emit()
+        except Exception as e:
+            print(f"[UPDATE] 解析失败（已忽略）: {e}")
+            self.check_failed.emit(f"解析更新信息失败：{e}")
+
+    @staticmethod
+    def _is_newer(latest, current):
+        def _t(v):
+            return tuple(int(x) for x in str(v).split(".") if x.strip().isdigit())
+        try:
+            return _t(latest) > _t(current)
+        except Exception:
+            return False
+
+
+if __name__ == "__main__":
+    # 启动时打印资源路径（已自动写入诊断日志）
+    _lines = []
+    _lines.append("=" * 60)
+    _lines.append(f"冻结模式: {getattr(sys, 'frozen', False)}  |  _BASE_DIR: {_BASE_DIR}")
+    _lines.append(f"_INTERNAL_DIR: {_INTERNAL_DIR}")
+    _vlc_status = os.environ.get("VLC_PLUGIN_PATH", "")
+    _lines.append(f"VLC  : {'本地 ' + _vlc_status if _vlc_status else '未找到本地, 注册表也未找到'}")
+    _lines.append(f"Vosk : {MODEL_PATH} {'√' if os.path.isdir(MODEL_PATH) else '✗ 未找到'}")
+    _lines.append(f"BGE  : {_BGE_MODEL_DIR}")
+    _lines.append(f"      model_optimized.onnx: {'√' if os.path.isfile(os.path.join(_BGE_MODEL_DIR, 'model_optimized.onnx')) else '✗ 未找到'}")
+    _lines.append(f"      fastembed 可用: {_FASTEMBED_AVAILABLE}")
+    _lines.append(f"TTS  : edge-tts 神经语音 {'√ 可用' if EDGE_TTS_AVAILABLE else '✗ 未安装/不可用(将用系统SAPI5, 音质较差)'} ({TTS_EDGE_VOICE})")
+    if not os.path.isdir(_BGE_MODEL_DIR):
+        _lines.append(f"      ⚠ 模型目录不存在，Part B/C 将回退简单匹配")
+    elif not _FASTEMBED_AVAILABLE:
+        _lines.append(f"      ⚠ fastembed 不可用，Part B/C 将回退简单匹配")
+    _lines.append("=" * 60)
+    for _line in _lines:
+        print(_line)
+
+    app = QApplication(sys.argv)
+    # 应用级图标：主窗口、所有对话框统一使用
+    _app_icon = _resolve_resource_file("xixi.ico")
+    if _app_icon:
+        app.setWindowIcon(QIcon(_app_icon))
+    app.setStyle("Fusion")
+    # ⚠️ Fusion 默认会解析成 SimSun（宋体），必须显式换成 DEFAULT_FONT_CHOICE（微软雅黑 UI）；
+    #    字体缺失时 _ui_font() 会自动回退 _FONT_FALLBACK
+    _load_app_fonts()
+    # 用户上次在「更多 → 个性化」里选的字体
+    try:
+        _saved_font = _load_settings().get(SETTINGS_FONT_KEY)
+    except Exception:
+        _saved_font = None
+    if _saved_font:
+        _UI_FONT["choice"] = _saved_font
+        print(f"[FONT] 按用户偏好使用界面字体: {_saved_font}")
+    else:
+        _UI_FONT["choice"] = DEFAULT_FONT_CHOICE
+        print(f"[FONT] 未设置过界面字体，使用默认: {DEFAULT_FONT_CHOICE}")
+    app.setFont(_ui_font(12))
+    app.setStyleSheet("""
+        QMainWindow { background: #f5f6fa; }
+        QLabel { color: #2c3e50; }
+        QPushButton { font-size:16px; padding:10px 20px; border-radius:6px; background:#ecf0f1; border:1px solid #bdc3c7; }
+        QPushButton:hover { background:#dcdde1; }
+        QTextEdit, QLineEdit { border:1px solid #bdc3c7; border-radius:4px; padding:6px; }
+
+        /* ---------- 滚动条：Fluent 风格（细、圆角、无箭头、透明底） ---------- */
+        QScrollBar:vertical {
+            background: transparent; width: 12px; margin: 2px 2px 2px 0; border: none;
+        }
+        QScrollBar::handle:vertical {
+            background: #c9d4e0; min-height: 40px; border-radius: 4px; margin: 0 3px;
+        }
+        QScrollBar::handle:vertical:hover   { background: #a9bacb; }
+        QScrollBar::handle:vertical:pressed { background: #93a7bb; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0px; background: transparent; border: none;
+        }
+        QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical { height: 0px; width: 0px; }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+
+        QScrollBar:horizontal {
+            background: transparent; height: 12px; margin: 0 2px 2px 2px; border: none;
+        }
+        QScrollBar::handle:horizontal {
+            background: #c9d4e0; min-width: 40px; border-radius: 4px; margin: 3px 0;
+        }
+        QScrollBar::handle:horizontal:hover   { background: #a9bacb; }
+        QScrollBar::handle:horizontal:pressed { background: #93a7bb; }
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+            width: 0px; background: transparent; border: none;
+        }
+        QScrollBar::left-arrow:horizontal, QScrollBar::right-arrow:horizontal { height: 0px; width: 0px; }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+
+        QScrollArea { border: none; background: transparent; }
+    """)
+    window = MainWindow()
+    # 所有页面都建好之后再统一挂缓动滚动（QScrollArea 在构造期就存在，这里是唯一时机）
+    _install_smooth_scroll()
+    sys.exit(app.exec_())

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoloTalk 优化版 · 交付总览</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1f2328; --sub:#57606a; --line:#d8dee4;
+    --card:#f6f8fa; --accent:#0969da; --warn:#9a6700; --warnbg:#fff8c5;
+    --ok:#1a7f37; --bad:#cf222e; --code:#f0f3f6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1117; --fg:#e6edf3; --sub:#8b949e; --line:#30363d;
+      --card:#161b22; --accent:#58a6ff; --warn:#d29922; --warnbg:#3b2f00;
+      --ok:#3fb950; --bad:#f85149; --code:#1c2128; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 60px;background:var(--bg);color:var(--fg);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:980px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+  h2{font-size:19px;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;margin:20px 0 8px}
+  p{margin:8px 0}
+  .lead{color:var(--sub);font-size:14px;margin-bottom:20px}
+  .notice{background:var(--warnbg);border-left:4px solid var(--warn);
+    padding:12px 16px;border-radius:6px;margin:16px 0;font-size:14px}
+  .notice b{color:var(--warn)}
+  .newbox{background:linear-gradient(135deg,#eef4ff,#f3e8ff);border:1px solid #c7d7ff;
+    padding:14px 18px;border-radius:10px;margin:16px 0;font-size:14px}
+  @media (prefers-color-scheme: dark){ .newbox{background:#16213b;border-color:#30406b} }
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+  .card .k{font-size:12px;color:var(--sub);letter-spacing:.4px;text-transform:uppercase}
+  .card .v{font-size:22px;font-weight:700;margin:4px 0;color:var(--accent)}
+  .card .d{font-size:13px;color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--card);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .ok{color:var(--ok);font-weight:600}
+  .bad{color:var(--bad);font-weight:600}
+  .tag{display:inline-block;background:var(--code);border:1px solid var(--line);
+    border-radius:4px;padding:1px 7px;font-size:12px;color:var(--sub)}
+  code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:6px;
+    padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.6}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  a{color:var(--accent)}
+  .files{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px}
+  .files div{background:var(--card);border:1px solid var(--line);border-radius:6px;
+    padding:8px 12px;font-size:13px}
+  .files b{display:block;color:var(--accent);margin-bottom:2px}
+  .small{font-size:13px;color:var(--sub)}
+  .linkbox{background:var(--card);border:2px dashed var(--accent);border-radius:10px;
+    padding:16px 20px;margin:14px 0;word-break:break-all;font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>SoloTalk 优化版 · 交付总览</h1>
+<p class="lead">广东英语听说练习 · 评分重构 · 内存优化 · 18 套带出处试题 · 固定下载链接　|　2026-11-13 更新</p>
+
+<div class="newbox">
+  <strong>🆕 本轮新增：</strong>依据你上传的「江门八下听说综合 8」试题与网络检索，
+  制作了 <strong>18 套带出处的试题</strong>（含 10 套广东高考/中考真题公开整理版）、
+  新增<strong>可在线使用的听说练习应用</strong>（听示范朗读 + 语音识别跟读 + 计时 + 逐维度评分），
+  并发布到<strong>一条固定链接</strong>——后续优化复用同一链接，无需更换地址。
+</div>
+
+<div class="notice">
+<b>先读这份：</b>仓库 <code>FallingLighty/SoloTalk</code> 里<strong>没有安卓源码</strong>（只有 Python 电脑版源码 + 235 MB 的 APK 二进制），
+因此<strong>无法重新编译出新的安卓 APK</strong>。软件改以「在线听说练习应用 + 完整工程包下载」形态交付。
+详见 <code>docs/04_现状核查与结论.md</code> 与 <code>docs/06_听说练习应用与固定下载链接.md</code>。<br>
+🔐 你明文提供的 GitHub PAT 请<strong>立即撤销并重新生成</strong>；本次仅用于只读 API 访问。
+</div>
+
+<!-- 发布链接回填区 -->
+<div id="share-link-section">
+<h2>软件下载 / 在线使用链接</h2>
+<div class="linkbox" id="share-link-box"><a href="https://aa987d29da8161df6.app.workbuddy.host/?sharecode=UXZYT4MCMH">https://aa987d29da8161df6.app.workbuddy.host/?sharecode=UXZYT4MCMH</a></div>
+<p class="small">此链接为软件与资料的<strong>唯一入口</strong>：在线听说练习、18 套题库、出处核查、全部源码与文档下载都在这里。
+<strong>后续优化复用同一链接</strong>，重新发布会覆盖更新内容；下载包按服务器磁盘现状实时打包，永远与最新版一致。
+链接中的 <code>?sharecode=…</code> 是访问凭据，请整条复制，勿删减。</p>
+</div>
+
+<h2>本轮四项诉求 → 结果</h2>
+<table>
+<tr><th style="width:26%">诉求</th><th>结果</th></tr>
+<tr><td>结合网络制作十几套试题，最好广东真题和模拟题</td><td><span class="ok">✅ 18 套</span>：10 套官方真题公开整理版（2021–2025 广东高考听说 + 2022/2025 深圳中考听说）、2 套考生回忆版、1 套广东省全真模拟、1 套用户上传原题（含真实听力 mp3）、4 套原创改编。逐套出处见 <code>docs/05_试题出处清单.md</code>。</td></tr>
+<tr><td>试题要有出处</td><td><span class="ok">✅ 逐套标注</span>：每套 <code>meta.source</code> 含来源类型、年份、卷别、地区、<strong>可点击的公开链接</strong>、采集日期、完整度与免责声明。回忆版/模拟/原创均单独标注，不冒充官方真题。</td></tr>
+<tr><td>试题放进软件内</td><td><span class="ok">✅ 已内置</span>：全部置于 <code>assets/question_bank/</code>，<strong>双格式兼容</strong>（同时含电脑版 CELST 字段与手机版听说综合字段），电脑版、手机版、评分引擎、Web 应用均可直接读取；按需加载，合计约 518 KB。</td></tr>
+<tr><td>提供软件下载链接，后续优化同一个链接</td><td><span class="ok">✅ 固定链接</span>：发布为在线应用，重复发布同一目录保持同一链接；链接内提供 6 类实时打包下载 + 单套 .solo 下载。</td></tr>
+<tr><td>增加听说功能</td><td><span class="ok">✅ 新应用</span>：TTS 示范朗读（语速 0.6–1.3×）＋真实听力音频播放＋浏览器语音识别（说）＋文本兜底＋计时＋分步练习＋逐维度评分报告与改进建议＋练习记录趋势。真实浏览器全流程验证通过。</td></tr>
+</table>
+
+<h2>上一轮基础：评分与内存优化</h2>
+<table>
+<tr><th style="width:26%">诉求</th><th>结果</th></tr>
+<tr><td>结合网络 + 广东高考评分系统优化评分</td><td><span class="ok">✅ 完成</span>：多维 CELST 评分引擎 v3.0（Python + Kotlin 双实现），在线评测优先／离线兜底，含 60→20 折算与 A/B/C 档次。10 个场景对照全部通过，双端 6 组输入逐字段一致。</td></tr>
+<tr><td>优化内存使其减小</td><td><span class="ok">✅ 完成</span>：精确解析 APK 794 个条目，定位 BGE/ONNX + Vosk 模型占 200+ MiB。已落地零模型评分内核与按需加载，给出 223.89 MiB → 约 40.79 MiB（−82%）的可执行方案。</td></tr>
+<tr><td>优化安卓软件</td><td><span class="ok">✅ 可集成</span>：Kotlin 评分内核<strong>已用 Kotlin 2.0.21 编译通过</strong> + Android 桥接层；同时给出<strong>已改造完成的电脑版可运行源码</strong>（保留原 7626 行 UI，仅替换 4 处）。</td></tr>
+</table>
+
+<h2>核心数字</h2>
+<div class="grid">
+  <div class="card"><div class="k">内置试题</div><div class="v">18 套</div><div class="d">10 真题 / 2 回忆 / 1 模拟 / 1 上传 / 4 改编</div></div>
+  <div class="card"><div class="k">题库体积</div><div class="v">518 KB</div><div class="d">17 套纯文本 + 1 套含真实听力音频</div></div>
+  <div class="card"><div class="k">原算法 · 全程未作答</div><div class="v" style="color:var(--bad)">8.00 分</div><div class="d">优化后 <b>0.00 分</b>　(cossim 基线白送分)</div></div>
+  <div class="card"><div class="k">原算法 · 噪声超长文本</div><div class="v" style="color:var(--bad)">−13.38 分</div><div class="d">优化后 <b>0.60 分</b>　(WER 未钳制致负分)</div></div>
+  <div class="card"><div class="k">全优作答</div><div class="v">57.06 / 60</div><div class="d">折算 <b>19 / 20</b>，A 档</div></div>
+  <div class="card"><div class="k">APK 体积</div><div class="v">223.89 MiB</div><div class="d">预计降至 <b>≈ 40.79 MiB</b>（−82%）</div></div>
+</div>
+
+<h2>18 套试题一览</h2>
+<table>
+<tr><th>#</th><th>试题</th><th>类型</th><th>年份 / 卷别</th></tr>
+<tr><td>1</td><td>北极熊 / 观赏树叶 / 被丢弃的画</td><td>真题</td><td>2021 广东高考 Test A</td></tr>
+<tr><td>2</td><td>象群找水 / 乌镇戏剧节 / 甜蜜的真相</td><td>真题</td><td>2022 广东高考 Test B</td></tr>
+<tr><td>3</td><td>童年与成长 / 长颈鹿酒店 / 给 Mary 的包裹</td><td>真题</td><td>2023 广东高考 Test A</td></tr>
+<tr><td>4</td><td>音乐 / 维修咖啡馆 / 以画换颜料</td><td>真题</td><td>2023 广东高考 Test B</td></tr>
+<tr><td>5</td><td>钻石公园 / 弄脏的画（部分原文）</td><td>真题</td><td>2023 广东高考 Test C</td></tr>
+<tr><td>6</td><td>波浪能 / 植树造林 / 从清洁工到歌唱家</td><td>真题</td><td>2024 广东高考 Test C</td></tr>
+<tr><td>7</td><td>红松鼠储粮 / 夜校 / Mary 与流浪小猫</td><td>真题</td><td>2025 广东高考 Test E</td></tr>
+<tr><td>8</td><td>咖啡 / 舞狮 / 藏宝室</td><td>回忆版</td><td>2025 广东高考 Test B</td></tr>
+<tr><td>9</td><td>救鹿 / 森林里的重逢</td><td>回忆版</td><td>2025 广东高考 Test C</td></tr>
+<tr><td>10</td><td>帮助他人 / 送报少年</td><td>真题</td><td>2022 深圳中考 第 1 套</td></tr>
+<tr><td>11</td><td>犯错 / 大本钟</td><td>真题</td><td>2022 深圳中考 第 2 套</td></tr>
+<tr><td>12</td><td>深圳时装秀（部分原文）</td><td>真题</td><td>2025 深圳中考 第 1 套</td></tr>
+<tr><td>13</td><td>有历史的小镇</td><td>模拟题</td><td>全真模拟 04（广东省专用）</td></tr>
+<tr><td>14</td><td>学跳舞 / 清洁工父亲 / 虚拟设计师</td><td>上传原题</td><td>江门八下听说综合 8 · 含 3 段 mp3</td></tr>
+<tr><td>15–18</td><td>花瓶礼物 / 交换生 / 社区花园 / 图书馆机器人</td><td>原创改编</td><td>依据公开评分标准题型样例</td></tr>
+</table>
+<p class="small">广东省教育考试院不公开听说考试原卷与官方题库；「真题」均为网络公开整理版，已逐套给出可核查链接。
+回忆版、模拟题、原创改编均单独标注，仅供个人备考练习，请勿商用。</p>
+
+<h2>原评分算法的三处系统性缺陷</h2>
+<table>
+<tr><th>#</th><th>原实现</th><th>问题</th></tr>
+<tr><td>1</td><td>Part A <code>(1−WER)×20</code></td><td>只测文本吻合；WER 未钳制 → <span class="bad">负分</span>；不评语音语调/语速</td></tr>
+<tr><td>2</td><td>Part B/C <code>(cos+1)/2</code> BGE 相似度</td><td>两句完全无关的英文也稳定得 ≈0.5 分 → <span class="bad">未作答仍得 8 分</span>；语言/信息不分维度</td></tr>
+<tr><td>3</td><td>Part C 要点相似度 ×24</td><td>24 分全压在内容一维，官方的语言/流利/语音三维完全不计分</td></tr>
+</table>
+
+<h2>APK 体积真相（实测 794 个 ZIP 条目）</h2>
+<table>
+<tr><th>项</th><th class="num">大小</th><th>说明</th></tr>
+<tr><td><code>lib/</code> native so</td><td class="num">101.16 MiB</td><td>4 个 ABI 重复打包</td></tr>
+<tr><td><code>assets/</code> 模型</td><td class="num">100.27 MiB</td><td>BGE ONNX + Vosk 全套</td></tr>
+<tr><td><code>libonnxruntime*.so</code></td><td class="num">62.29 MiB</td><td>8 个文件 / 4 ABI</td></tr>
+<tr><td><code>assets/vosk-model/</code></td><td class="num">67.61 MiB</td><td>含两个 FST 解码图 44.28 MiB</td></tr>
+<tr><td><code>bge-model/model_quantized.onnx</code></td><td class="num">32.44 MiB</td><td>评分虚高的根源，可直接删除</td></tr>
+<tr><td>9 个 <code>classes*.dex</code></td><td class="num">19.81 MiB</td><td>R8 可缩减</td></tr>
+</table>
+
+<h2>验证结果（全部通过）</h2>
+<pre>题库 18 套                          → 双格式字段完整、出处元数据完整、评分链路全部跑通
+Web 应用真实浏览器（Chromium）       → 题库/出处/分步练习/评分报告/记录/下载/筛选 全流程通过，无 JS 错误
+Web 后端                            → 18 套题、音频流式读取、评分、6 类下载包全部 200
+python3 tools/verify_scoring.py      → 10/10 场景符合官方档次预期
+python3 tools/verify_integration.py  → 7/7 项通过（drop-in 兼容 + 按需解压）
+python3 tools/verify_parity.py       → 6/6 组输入 Python/Kotlin 逐字段一致
+Kotlin 2.0.21 JVM 编译              → 13 个 class，无错误无警告
+Python 文件语法检查                 → 全部通过</pre>
+
+<h2>主要交付文件</h2>
+<div class="files">
+  <div><b>webapp/</b>听说练习 Web 应用（Flask + 前端）　<span class="tag">本轮新增</span></div>
+  <div><b>docs/05_试题出处清单.md</b>18 套逐套出处与免责　<span class="tag">本轮新增</span></div>
+  <div><b>docs/06_听说练习应用与固定下载链接.md</b>功能与固定链接说明　<span class="tag">本轮新增</span></div>
+  <div><b>docs/04_现状核查与结论.md</b>如实说明：仓库里有什么、哪些能改</div>
+  <div><b>docs/01_评分标准与算法对照.md</b>官方档次表 + 三处缺陷 + 重构设计</div>
+  <div><b>docs/03_内存与体积优化报告.md</b>实测数据与 −82% 瘦身方案</div>
+  <div><b>docs/02_集成指南.md</b>电脑版 / 安卓 / 在线端点 / 题库扩充</div>
+  <div><b>assets/question_bank/</b>18 套 .solo + 索引（约 518 KB）</div>
+  <div><b>tools/bank_data.py</b>试题原文与出处数据源</div>
+  <div><b>scoring/gd_celst.py</b>CELST 多维评分核心（Python，零依赖）</div>
+  <div><b>android/GdCelstScoring.kt</b>Kotlin 评分内核（已编译验证）</div>
+  <div><b>app/SoloTalk_optimized.py</b>已接入新引擎的可运行电脑版源码</div>
+  <div><b>report/question_bank_report.json</b>题库机器可读报告</div>
+  <div><b>report/apk_analysis.json</b>APK 794 条目真实数据快照</div>
+</div>
+
+<h2>边界说明</h2>
+<ul>
+<li><strong>没有重编译 APK</strong>：无安卓源码、无签名私钥。交付的是可直接集成的 Kotlin 内核与精确诊断，不是「装得上但没验证过」的包。</li>
+<li><strong>「真题」非官方原卷</strong>：广东省教育考试院不公开听说考试原卷与官方题库；题库中的真题为公开网络整理版，回忆版/模拟/原创改编已分别标注，绝不冒充官方真题。仅供个人备考练习，请勿商用。</li>
+<li><strong>在线评测服务需自备</strong>：浏览器语音识别只提供文本，发音/语法维度走离线近似（引擎已封顶并标注）。要完全对齐官方机考需接入音素级发音评测。</li>
+<li><strong>40.79 MiB 是估算值</strong>，需重新打包后实测确认。评分结果用于练习自评，最终成绩以广东省教育考试院公布为准。</li>
+</ul>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SoloTalk · 广东英语听说练习</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ctext x='32' y='45' font-size='38' font-weight='bold' fill='white' text-anchor='middle' font-family='Arial'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">S</span>
+    <div><h1>SoloTalk</h1><p>广东英语听说 · 真题练习与智能评分</p></div>
+  </div>
+  <nav>
+    <button class="nav-btn active" data-view="bank">题库</button>
+    <button class="nav-btn" data-view="practice">听说练习</button>
+    <button class="nav-btn" data-view="records">练习记录</button>
+    <button class="nav-btn" data-view="download">下载</button>
+    <button class="nav-btn" data-view="about">关于</button>
+  </nav>
+</header>
+
+<main>
+<!-- ══════════ 题库 ══════════ -->
+<section id="view-bank" class="view active">
+  <div class="hero">
+    <h2>18 套内置试题 · 全部标注出处</h2>
+    <p>覆盖 2021–2025 广东高考英语听说真题、深圳/广州中考听说真题、广东省全真模拟、
+       用户上传的江门八下听说综合原题，以及明确标注的原创改编题。
+       点击「出处」可核查来源链接与完整度。</p>
+    <div class="stats" id="bank-stats"></div>
+  </div>
+  <div class="filters">
+    <div class="filter-row" id="filter-level"></div>
+    <div class="filter-row" id="filter-cat"></div>
+    <input id="search" type="search" placeholder="搜索试题名称 / 年份 / 地区…">
+  </div>
+  <div id="paper-list" class="paper-grid"></div>
+</section>
+
+<!-- ══════════ 听说练习 ══════════ -->
+<section id="view-practice" class="view">
+  <div id="practice-empty" class="empty-state">
+    <h2>请先在「题库」中选择一套试题</h2>
+    <p>练习流程：听示范朗读 → 跟读录音 → 角色扮演问答 → 故事复述 → 逐维度评分报告。</p>
+  </div>
+  <div id="practice-body" hidden>
+    <div class="practice-head">
+      <div>
+        <div class="crumb" id="p-source-tag"></div>
+        <h2 id="p-title"></h2>
+        <div class="p-meta" id="p-meta"></div>
+      </div>
+      <button id="p-back" class="btn ghost">更换试题</button>
+    </div>
+
+    <div class="steps" id="p-steps"></div>
+
+    <!-- Part A -->
+    <div class="panel step-panel" id="step-a">
+      <div class="panel-head"><h3>Part A · 模仿朗读</h3><span class="score-hint">语音语调 12 + 语速与内容 8 = 20 分</span></div>
+      <p class="tip">先听示范朗读，注意连读、意群停顿与升降调；然后在限时内跟读并录音（或直接输入识别文本）。</p>
+      <div class="tts-bar">
+        <button class="btn" data-tts="a-ref">▶ 播放示范</button>
+        <button class="btn ghost" data-tts-stop="1">■ 停止</button>
+        <label>语速 <input type="range" id="tts-rate" min="0.6" max="1.3" step="0.05" value="0.9"><span id="rate-val">0.90×</span></label>
+        <button class="btn ghost" id="a-toggle">显示原文</button>
+      </div>
+      <div id="a-ref" class="ref-text collapsed"></div>
+      <div class="rec-bar">
+        <button class="btn rec" id="a-rec">🎤 开始跟读录音</button>
+        <span class="timer" id="a-timer">00:00</span>
+        <span class="rec-status" id="a-rec-status">未开始</span>
+      </div>
+      <textarea id="a-text" rows="4" placeholder="语音识别结果会出现在这里；若浏览器不支持识别，可手动输入你朗读的内容…"></textarea>
+      <div class="row-end"><span id="a-wc" class="muted">0 词</span><button class="btn ghost" id="a-clear">清空</button></div>
+      <div id="a-audio-note" class="audio-note" hidden></div>
+    </div>
+
+    <!-- Part B -->
+    <div class="panel step-panel" id="step-b">
+      <div class="panel-head"><h3>Part B · 角色扮演 / 信息获取</h3><span class="score-hint">每题 2 分：语言 + 信息</span></div>
+      <div id="b-situation" class="situation"></div>
+      <div class="tts-bar">
+        <button class="btn" data-tts="b-listen">▶ 播放听力材料</button>
+        <button class="btn ghost" data-tts-stop="1">■ 停止</button>
+        <span class="muted">先听材料，再逐题作答</span>
+      </div>
+      <details class="listen-details"><summary>查看听力文本（练习模式）</summary><div id="b-listen" class="ref-text"></div></details>
+      <div id="b-questions"></div>
+      <div id="b-listen-audio" hidden></div>
+    </div>
+
+    <!-- Part C -->
+    <div class="panel step-panel" id="step-c">
+      <div class="panel-head"><h3>Part C · 故事复述 / 短文复述</h3><span class="score-hint">内容 12 + 语言 4 + 流利 5 + 语音 3 = 24 分</span></div>
+      <p class="tip">先听故事，结合梗概、关键词与要点提示，在限时内用自己的话复述。</p>
+      <div class="tts-bar">
+        <button class="btn" data-tts="c-story">▶ 播放故事</button>
+        <button class="btn ghost" data-tts-stop="1">■ 停止</button>
+      </div>
+      <div class="hint-grid">
+        <div><b>梗概</b><p id="c-summary"></p></div>
+        <div><b>关键词 / 要点提示</b><p id="c-keywords"></p></div>
+      </div>
+      <details class="listen-details"><summary>查看故事原文（练习模式）</summary><div id="c-story" class="ref-text"></div></details>
+      <div class="rec-bar">
+        <button class="btn rec" id="c-rec">🎤 开始复述录音</button>
+        <span class="timer" id="c-timer">00:00</span>
+        <span class="rec-status" id="c-rec-status">未开始</span>
+      </div>
+      <textarea id="c-text" rows="6" placeholder="复述的识别文本…"></textarea>
+      <div class="row-end"><span id="c-wc" class="muted">0 词</span><button class="btn ghost" id="c-clear">清空</button></div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn primary big" id="submit">提交并评分</button>
+      <span class="muted" id="submit-hint">评分基于广东高考英语听说 CELST 标准</span>
+    </div>
+    <div id="report" hidden></div>
+  </div>
+</section>
+
+<!-- ══════════ 练习记录 ══════════ -->
+<section id="view-records" class="view">
+  <div class="hero"><h2>练习记录</h2><p>成绩保存在本机浏览器，不会上传。可查看趋势并导出 JSON。</p></div>
+  <div id="records-body"></div>
+</section>
+
+<!-- ══════════ 下载 ══════════ -->
+<section id="view-download" class="view">
+  <div class="hero">
+    <h2>软件与资料下载</h2>
+    <p>本页与整套应用共用<strong>同一个访问链接</strong>；后续优化会覆盖更新这个链接，无需更换地址。
+       所有压缩包按服务器当前文件实时打包，始终与最新版本一致。</p>
+    <div class="notice" style="font-size:12.5px">
+      <b>固定链接（请整条复制，含 ?sharecode=…，勿删减）：</b><br>
+      <a id="fixed-link" href="#" style="color:#fff;text-decoration:underline;word-break:break-all"></a>
+    </div>
+    <div class="notice">
+      <b>关于「安卓安装包」：</b>原 GitHub 仓库仅含电脑版 Python 源码与一个已编译的 APK，
+      <strong>不含安卓工程源码</strong>，因此无法重新编译出新的 APK。这里提供的是
+      ① 可直接在线使用的听说练习应用（手机/电脑浏览器均可）、② 可集成进安卓工程的 Kotlin 评分内核、
+      ③ 电脑版优化源码、④ 全部题库与文档。把这些文件交给有安卓工程的一方即可产出新安装包。
+    </div>
+  </div>
+  <div id="download-list" class="dl-grid"></div>
+  <div class="panel">
+    <div class="panel-head"><h3>官方原版入口</h3></div>
+    <p>原作者仓库与已发布的 APK（未改动）：</p>
+    <p><a href="https://github.com/FallingLighty/SoloTalk" target="_blank" rel="noopener">github.com/FallingLighty/SoloTalk</a>
+       · <a href="https://github.com/FallingLighty/SoloTalk/releases" target="_blank" rel="noopener">Releases（含手机版 APK）</a></p>
+  </div>
+</section>
+
+<!-- ══════════ 关于 ══════════ -->
+<section id="view-about" class="view">
+  <div class="hero"><h2>评分标准与声明</h2></div>
+  <div id="scoring-info" class="panel"></div>
+  <div class="panel">
+    <div class="panel-head"><h3>出处与版权声明</h3></div>
+    <p>广东省教育考试院不公开听说考试原卷与官方题库。本应用中的「真题」为高考直通车、
+       公众号与教辅网站等<strong>网络公开整理版</strong>，已逐套标注来源链接、年份、卷别与完整度；
+       「考生回忆版」「模拟题」「原创改编」均单独标注，不冒充官方真题。
+       全部内容仅供个人备考练习，版权归原命题机构及整理者所有，请勿用于商业用途。</p>
+    <p>逐套出处见「题库」中每套题的「出处」按钮，或下载包内的
+       <code>docs/05_试题出处清单.md</code>。</p>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h3>功能说明</h3></div>
+    <ul class="feat">
+      <li><b>听</b>：浏览器内置语音合成朗读示范文本、听力材料与故事，可调节语速 0.6–1.3×；用户上传原题的 3 段真实听力 mp3 已内置并可直接播放。</li>
+      <li><b>说</b>：支持浏览器语音识别（Chrome/Edge，需麦克风权限）自动转写；不支持时可直接输入文本，同样能评分。</li>
+      <li><b>计时</b>：跟读与复述带计时器，可模拟考试节奏。</li>
+      <li><b>评分</b>：调用已验证的 CELST 多维评分引擎，输出语音语调/语速与内容/语言/信息/流利/内容要点逐维度分数、档次、卷面分与折算 20 分，并给出改进建议。</li>
+      <li><b>题库</b>：18 套双格式 .solo（电脑版 CELST 字段 + 手机版听说综合字段），按需加载，除用户上传原题外不含音视频，总大小约 0.5 MB。</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer>
+  <span>SoloTalk 优化版 · 广东英语听说练习</span>
+  <span id="foot-note">题库 18 套 · 评分引擎 v3.0</span>
+</footer>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- 出处弹窗 -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-card">
+    <button id="modal-close" class="modal-x">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

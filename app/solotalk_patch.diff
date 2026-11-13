@@ -1,0 +1,358 @@
+--- app/SoloTalk_original.py
++++ app/SoloTalk_optimized.py
+@@ -50,6 +50,12 @@
+ else:
+     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ _SCRIPT_DIR = _BASE_DIR
++# ===== [SoloTalk 优化版 v3.0] 接入 CELST 多维评分引擎 =====
++# 保持工程目录结构（app/ 与 scoring/ 同级）即可；也可通过 PYTHONPATH 指定。
++# 评分引擎为纯标准库实现，不加载任何模型。
++sys.path.insert(0, os.path.join(_BASE_DIR, ".."))
++sys.path.insert(0, _BASE_DIR)
++# =========================================================
+ _VLC_DIR = os.path.join(_BASE_DIR, "VLC")
+ _INTERNAL_DIR = os.path.join(_BASE_DIR, "_internal")  # PyInstaller one-folder 数据目录
+ # PyInstaller 6.x 可能把数据文件放到 _internal/ 下，而不是 exe 同级
+@@ -520,80 +526,15 @@
+ 
+ 
+ def _get_bge_model():
+-    """获取 BGE 嵌入模型实例（懒加载单例）。
+-    模型目录存在且 fastembed 已安装时返回 TextEmbedding 对象，
+-    否则返回 None（调用方应回退到原始评估方法）。
+-    完全离线运行：不连接 HuggingFace 或任何外部服务。"""
+-    global _bge_embedder
+-    if _bge_embedder is not None:
+-        if isinstance(_bge_embedder, TextEmbedding):
+-            print("[BGE] 返回已缓存的模型实例")
+-            return _bge_embedder
+-        else:
+-            print("[BGE] 已标记为不可用，跳过加载")
+-            return None
+-
+-    print("[BGE] === 开始加载 BGE 嵌入模型 ===")
+-    print(f"[BGE] 解析到的模型目录: {_BGE_MODEL_DIR}")
+-    print(f"[BGE] 路径解析逻辑: _BASE_DIR={_BASE_DIR}, _INTERNAL_DIR={_INTERNAL_DIR}")
+-    print(f"[BGE] 目录存在: {os.path.isdir(_BGE_MODEL_DIR)}")
+-    print(f"[BGE] fastembed 可用: {_FASTEMBED_AVAILABLE}")
+-
+-    if not _FASTEMBED_AVAILABLE:
+-        print("[BGE] ❌ fastembed 未安装，回退简单匹配")
+-        _bge_embedder = []
+-        return None
+-    if not os.path.isdir(_BGE_MODEL_DIR):
+-        print(f"[BGE] ❌ 模型目录不存在: {_BGE_MODEL_DIR}")
+-        # 列出可能的位置帮助排查
+-        for d in (_BASE_DIR, _INTERNAL_DIR, os.getcwd()):
+-            p = os.path.join(d, "bge-small-en-v1.5")
+-            print(f"[BGE]   检查 {d}/bge-small-en-v1.5 → {'√ 存在' if os.path.isdir(p) else '✗ 不存在'}")
+-        _bge_embedder = []
+-        return None
+-
+-    # 检查必需的 ONNX 模型文件是否存在
+-    onnx_file = os.path.join(_BGE_MODEL_DIR, "model_optimized.onnx")
+-    print(f"[BGE] model_optimized.onnx: {'√' if os.path.isfile(onnx_file) else '✗ 不存在'}")
+-    if not os.path.isfile(onnx_file):
+-        # 尝试从 onnx/ 子目录复制
+-        src = os.path.join(_BGE_MODEL_DIR, "onnx", "model.onnx")
+-        if os.path.isfile(src):
+-            print("[BGE] 尝试从 onnx/model.onnx 复制...")
+-            try:
+-                import shutil
+-                shutil.copy2(src, onnx_file)
+-                print("[BGE] 复制成功")
+-            except Exception as e:
+-                print(f"[BGE] 复制失败: {e}")
+-        if not os.path.isfile(onnx_file):
+-            print(f"[BGE] ❌ ONNX 文件缺失: {onnx_file}")
+-            _bge_embedder = []
+-            return None
+-
+-    # 强制离线模式
+-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+-    cache_dir = os.path.dirname(_BGE_MODEL_DIR)
+-    print(f"[BGE] fastembed cache_dir: {cache_dir}")
+-    print(f"[BGE] fastembed 将在此目录下查找 bge-small-en-v1.5/ 子目录")
+-
+-    try:
+-        _bge_embedder = TextEmbedding(
+-            model_name="BAAI/bge-small-en-v1.5",
+-            cache_dir=cache_dir,
+-            local_files_only=True,
+-        )
+-        print("[BGE] TextEmbedding 创建成功，预热中...")
+-        list(_bge_embedder.embed(["warmup"]))
+-        print("[BGE] ✅ BGE 嵌入模型加载成功！Part B/C 使用语义相似度。")
+-        return _bge_embedder
+-    except Exception as e:
+-        print(f"[BGE] ❌ 模型加载失败: {e}")
+-        import traceback
+-        traceback.print_exc()
+-        _bge_embedder = []
+-        return None
+-
++    """[优化版 v3.0] 已停用 BGE / ONNX 嵌入模型。
++
++    原实现加载 bge-small-en-v1.5（APK 内 32.44 MB 模型文件，运行时 >130 MB 常驻内存），
++    且 `_embedding_cosine_similarity` 把余弦值用 `(cos+1)/2` 映射到 [0,1]：
++    两句语义完全无关的英文也稳定得到 ≈0.5 分，正是原 README 自述「B 偏高」的根因。
++    新评分引擎改用零模型、可解释的多维算法，故此处直接返回 None ——
++    既消除系统性虚高，也直接省掉整块运行时内存与 APK 体积。
++    """
++    return None
+ 
+ def _embedding_cosine_similarity(text1, text2, embedder):
+     """用 BGE 嵌入计算两句英文的余弦相似度。返回 0.0~1.0 的浮点数。"""
+@@ -987,132 +928,91 @@
+ 
+ def evaluate_recordings(recs, pkg, model, existing_eval=None, selection=None,
+                         progress_cb=None):
+-    """对一份录音（recordings 字典）做离线批改，返回 eval_result。
+-    统一了「考试结束实时批改」与「历史记录重新批改」两条路径，避免逻辑分叉。
+-    Part B 跳过/未录音的空槽位记 0.0 相似度，不抛异常。
+-    当 BGE 嵌入模型可用时，Part B/C 使用语义余弦相似度；否则回退到 Jaccard/关键词匹配。
+-
+-    参数：
+-      existing_eval: 历史重新批改时传入的旧评估结果，作为基础 dict，
+-                     只有被选中的槽位会被重新计算，其余保留原值，避免无谓的 Vosk 识别开销。
+-      selection: dict，指定要重新批改的槽位，格式：
+-                 {'partA': bool,
+-                  'partB_three': {0: bool, 1: bool, ...},   # 按题目序号
+-                  'partB_five':  {0: bool, ...},
+-                  'partC': bool}
+-                 为 None 时表示「全部重新批改」（实时批改场景）。
+-      progress_cb: 可选回调 progress_cb(step, total, label)，每处理一个槽位（Part/小题）前
+-                   调用一次，用于后台线程上报进度（step 从 1 起，total 为本次批改总槽位数）。
+-                   为 None 时退化为无进度上报。"""
+-    eval_result = dict(existing_eval) if existing_eval else {}
+-    _all = (selection is None)
+-
+-    # 槽位展开 + 进度统计（供后台批改线程上报；progress_cb=None 时退化为无进度）
+-    # ⚠️ 必须在第一个 _tick() 调用之前完成，否则会 UnboundLocalError。
+-    b3, b5 = _partB_slots_as_ordered(recs.get('partB', {}))
+-    n3 = len(pkg.partB_three_questions)
+-    n5 = len(pkg.partB_five_answers)
+-    sel3 = selection.get('partB_three') if selection else None
+-    sel5 = selection.get('partB_five') if selection else None
+-    _prog_step = 0
+-    if _all:
+-        _prog_total = 1 + len(b3) + len(b5) + 1      # A + 三问 + 五答 + C
+-    else:
+-        _prog_total = 0
+-        if selection.get('partA'):
+-            _prog_total += 1
+-        _prog_total += sum(1 for i in range(len(b3)) if (sel3 or {}).get(i))
+-        _prog_total += sum(1 for i in range(len(b5)) if (sel5 or {}).get(i))
+-        if selection.get('partC'):
+-            _prog_total += 1
+-    def _tick(label):
+-        nonlocal _prog_step
+-        _prog_step += 1
+-        if progress_cb:
+-            try:
+-                progress_cb(_prog_step, _prog_total, label)
+-            except Exception:
+-                pass
+-
+-    # 尝试加载 BGE 嵌入模型（懒加载，仅首次调用时初始化）
+-    bge = _get_bge_model()
+-    if bge:
+-        print("[BGE] 评分将使用 BGE 语义余弦相似度")
+-    else:
+-        print("[BGE] 评分将回退到 Jaccard/关键词匹配")
+-
+-    # ── Part A ──
+-    if _all or (selection.get('partA')):
+-        _tick("Part A 模仿朗读")
+-        if recs.get('partA'):
+-            hyp = recognize_audio_file(recs['partA'], model)
+-            wer, acc = levenshtein_wer(pkg.partA_hidden_text, hyp)
+-            eval_result['partA'] = {'recognized': hyp, 'wer': wer, 'accuracy': acc}
+-        else:
+-            eval_result['partA'] = {'recognized': '', 'wer': 1.0, 'accuracy': 0.0}
+-    elif 'partA' not in eval_result:
+-        eval_result['partA'] = {'recognized': '', 'wer': 1.0, 'accuracy': 0.0}
+-
+-    # ── Part B 三问 ──
+-    old3 = eval_result.get('partB_three', [])
+-    new3 = []
+-    for i, rec in enumerate(b3):
+-        if _all or (sel3 and sel3.get(i)):
+-            _tick(f"Part B 三问 {i+1}")
+-            ref = pkg.partB_three_questions[i].get('hidden_answer', '') if i < n3 else ''
+-            hyp = recognize_audio_file(rec, model) if rec else ""
+-            if bge and rec and ref.strip() and hyp.strip():
+-                sim = _embedding_cosine_similarity(ref, hyp, bge)
+-            else:
+-                sim = jaccard_similarity(ref, hyp) if rec else 0.0
+-            new3.append({'recognized': hyp, 'similarity': sim})
+-        else:
+-            new3.append(old3[i] if i < len(old3) else {'recognized': '', 'similarity': 0.0})
+-    eval_result['partB_three'] = new3
+-
+-    # ── Part B 五答 ──
+-    old5 = eval_result.get('partB_five', [])
+-    new5 = []
+-    for i, rec in enumerate(b5):
+-        if _all or (sel5 and sel5.get(i)):
+-            _tick(f"Part B 五答 {i+1}")
+-            ref = pkg.partB_five_answers[i].get('hidden_answer', '') if i < n5 else ''
+-            hyp = recognize_audio_file(rec, model) if rec else ""
+-            if bge and rec and ref.strip() and hyp.strip():
+-                sim = _embedding_cosine_similarity(ref, hyp, bge)
+-            else:
+-                sim = jaccard_similarity(ref, hyp) if rec else 0.0
+-            new5.append({'recognized': hyp, 'similarity': sim})
+-        else:
+-            new5.append(old5[i] if i < len(old5) else {'recognized': '', 'similarity': 0.0})
+-    eval_result['partB_five'] = new5
+-
+-    # ── Part C ──
+-    if _all or (selection.get('partC')):
+-        _tick("Part C 故事复述")
+-        if recs.get('partC'):
+-            hyp = recognize_audio_file(recs['partC'], model)
+-            scores, use_sem = _partC_point_scores(hyp, pkg.partC_key_points, bge)
+-            total = len(scores)
+-            matched = sum(1 for s in scores if s >= 0.80)   # 得分 >= 0.80 的要点条数
+-            matching = (sum(scores) / total) if total else 0.0
+-            c_result = {
+-                'recognized': hyp,
+-                'coverage': f"{matched}/{total}",
+-                'semantic_sim': matching,        # 匹配度 = 各条得分平均（同时作为得分依据）
+-                'points': scores,
+-            }
+-            eval_result['partC'] = c_result
+-        else:
+-            eval_result['partC'] = {'recognized': '', 'coverage': '0/0', 'semantic_sim': 0.0}
+-    elif 'partC' not in eval_result:
+-        eval_result['partC'] = {'recognized': '', 'coverage': '0/0', 'semantic_sim': 0.0}
+-
+-    return eval_result
+-
++    """[SoloTalk 优化版 v3.0] 广东高考英语听说（CELST）评分引擎适配层。
++
++    ★ 函数签名与返回字典结构 == 原 evaluate_recordings()，
++      因此编辑模式 / 练习模式 / 模考模式 / 历史记录 / 结果卡片 **无需任何改动**。
++      返回里额外附带 `score_report`（逐维度明细），旧 UI 会自然忽略。
++
++    ★ 「结合网络」：AutoASRProvider 在配置了 SOLOTALK_ASR_ENDPOINT 时走在线
++      识别 + 发音/语法评测（拿到音素置信度、语速、停顿等韵律信号），
++      断网或超时自动回退本地 Vosk，考场弱网环境同样能完整出分。
++
++    评分口径（官方）：
++      Part A 20 = 语音语调 12 + 语速与内容 8
++      Part B 16 = 三问(语言1.5+信息0.5)×3 + 五答(语言0.5+信息1.5)×5
++      Part C 24 = 内容 12 + 语言 4 + 流利 5 + 语音 3
++      卷面 60 ÷ 3，四舍五入取整 → 计入高考 20 分
++    """
++    import os as _os
++    from scoring import (grade_exam, ScoringConfig, AutoASRProvider,
++                         OfflineASRProvider, OnlineASRProvider)
++
++    # ── 识别层：在线优先 + 离线兜底 ──
++    _endpoint = _os.environ.get("SOLOTALK_ASR_ENDPOINT", "").strip()
++    _key = _os.environ.get("SOLOTALK_ASR_KEY", "")
++    _offline = OfflineASRProvider(model=model, sample_rate=SAMPLE_RATE)
++    _online = OnlineASRProvider(_endpoint, api_key=_key) if _endpoint else None
++    provider = AutoASRProvider(online=_online, offline=_offline)
++
++    # ── 题目 spec（字段与 SoloPackage.to_dict() 一致）──
++    spec = {
++        "partA": {"hidden_text": getattr(pkg, "partA_hidden_text", "") or ""},
++        "partB": {
++            "three_questions": getattr(pkg, "partB_three_questions", []) or [],
++            "five_answers": getattr(pkg, "partB_five_answers", []) or [],
++        },
++        "partC": {
++            "key_points": getattr(pkg, "partC_key_points", "") or "",
++            "tts_text": (getattr(pkg, "partC_tts_text", "") or ""
++                         or getattr(pkg, "partC_summary", "") or ""),
++        },
++    }
++
++    # ── 进度回调（保持契约：step 从 1 起）──
++    _pb = recs.get("partB", {}) or {}
++    _n = 1 + (len(_pb) if isinstance(_pb, (dict, list)) else 0) + 1
++    if progress_cb:
++        try:
++            progress_cb(1, _n, "多维评分批改中")
++        except Exception:
++            pass
++
++    report, ev = grade_exam(spec, recs, provider, ScoringConfig())
++
++    # ── selection：历史「重新批改选中记录」时，未选中槽位保留旧值 ──
++    if selection and existing_eval:
++        if not selection.get("partA"):
++            ev["partA"] = existing_eval.get("partA", ev["partA"])
++        if not selection.get("partC"):
++            ev["partC"] = existing_eval.get("partC", ev["partC"])
++        s3 = selection.get("partB_three") or {}
++        s5 = selection.get("partB_five") or {}
++        old3 = existing_eval.get("partB_three", []) or []
++        old5 = existing_eval.get("partB_five", []) or []
++        ev["partB_three"] = [
++            ev["partB_three"][i] if s3.get(i)
++            else (old3[i] if i < len(old3) else ev["partB_three"][i])
++            for i in range(len(ev["partB_three"]))
++        ]
++        ev["partB_five"] = [
++            ev["partB_five"][i] if s5.get(i)
++            else (old5[i] if i < len(old5) else ev["partB_five"][i])
++            for i in range(len(ev["partB_five"]))
++        ]
++
++    # 新增：逐维度报告（卷面分 / 折算分 / 档次 / 在线离线来源）
++    ev["score_report"] = report.to_dict()
++    if progress_cb:
++        try:
++            progress_cb(_n, _n, "批改完成")
++        except Exception:
++            pass
++    return ev
+ 
+ # ------------------ 后台批改（进度环 + 进度条） ------------------
+-# 批改 = Vosk 离线识别 + BGE 语义相似度，纯 CPU 且按槽位串行，单份录音常需数秒。
++# [优化版 v3.0] 批改 = 在线识别(优先)/本地 Vosk(兜底) + 零模型 CELST 多维评分；
++# 不再加载 BGE ONNX 模型，常驻内存从数百 MB 降到常数级，批改耗时也显著缩短。
+ # 原先同步跑会冻结 UI 且无任何反馈；改为 QThread 后台跑 + 模态进度框
+ #（旋转环动画 + 步进进度条），与 QuestionBankLoader / UpdateChecker 同套线程模式。
+ class GradingWorker(QThread):
+@@ -1339,7 +1239,35 @@
+         target = min(cands, key=lambda n: n.count('/'))   # 取层级最浅的那个
+         with zf.open(target) as f:
+             data = json.load(f)
+-        zf.extractall(temp_dir)
++        # [优化版 v3.0] 不再 extractall 全包。
++        # 原实现把整个题目包（可能含几十~几百 MB 视频）一次性解压到磁盘，
++        # 且临时目录不随用随清，是手机版内存/存储峰值与「历史记录不稳定」的诱因。
++        # 现在只解压 data.json 实际引用到的媒体，并设单文件 / 总量上限。
++        needed = set()
++        _pa = data.get("partA") or {}
++        _pb = data.get("partB") or {}
++        _pc = data.get("partC") or {}
++        for _v in (_pa.get("video"), _pb.get("listening_audio"), _pc.get("audio")):
++            if _v:
++                needed.add(os.path.basename(_v))
++        for _q in (_pb.get("three_questions") or []):
++            if _q.get("en_audio"):
++                needed.add(os.path.basename(_q["en_audio"]))
++        for _q in (_pb.get("five_answers") or []):
++            if _q.get("q_audio"):
++                needed.add(os.path.basename(_q["q_audio"]))
++        _MAX_ONE = 32 * 1024 * 1024       # 单文件 32 MB
++        _MAX_ALL = 64 * 1024 * 1024       # 单套题累计 64 MB
++        _used = 0
++        for _name in zf.namelist():
++            if os.path.basename(_name) not in needed:
++                continue
++            _info = zf.getinfo(_name)
++            if _info.file_size > _MAX_ONE or _used + _info.file_size > _MAX_ALL:
++                print(f"[题库] 跳过超大媒体 {_name} ({_info.file_size} bytes)")
++                continue
++            zf.extract(_name, temp_dir)
++            _used += _info.file_size
+     sub = os.path.dirname(target)
+     base_dir = os.path.join(temp_dir, sub) if sub else temp_dir
+     return data, temp_dir, base_dir

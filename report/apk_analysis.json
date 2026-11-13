@@ -1,0 +1,5953 @@
+{
+  "meta": {
+    "entries": 794,
+    "cd_size": 73522,
+    "cd_offset": 234972026,
+    "apk_size": 235045570
+  },
+  "summary": {
+    "total_compressed_bytes": 234764028,
+    "total_compressed_mb": 223.89,
+    "total_uncompressed_mb": 267.89,
+    "by_top": {
+      "lib": {
+        "mb": 101.16,
+        "count": 23
+      },
+      "assets": {
+        "mb": 100.27,
+        "count": 19
+      },
+      "(root)": {
+        "mb": 20.69,
+        "count": 12
+      },
+      "res": {
+        "mb": 1.71,
+        "count": 657
+      },
+      "okhttp3": {
+        "mb": 0.04,
+        "count": 2
+      },
+      "kotlin": {
+        "mb": 0.01,
+        "count": 7
+      },
+      "META-INF": {
+        "mb": 0.0,
+        "count": 74
+      }
+    },
+    "by_ext": {
+      ".so": {
+        "mb": 101.16,
+        "count": 23
+      },
+      ".fst": {
+        "mb": 44.28,
+        "count": 2
+      },
+      ".onnx": {
+        "mb": 32.44,
+        "count": 1
+      },
+      ".dex": {
+        "mb": 19.81,
+        "count": 9
+      },
+      ".mdl": {
+        "mb": 15.22,
+        "count": 1
+      },
+      ".ie": {
+        "mb": 7.9,
+        "count": 1
+      },
+      ".arsc": {
+        "mb": 0.88,
+        "count": 1
+      },
+      ".mp3": {
+        "mb": 0.82,
+        "count": 12
+      },
+      ".png": {
+        "mb": 0.8,
+        "count": 416
+      },
+      ".txt": {
+        "mb": 0.22,
+        "count": 1
+      },
+      ".dubm": {
+        "mb": 0.16,
+        "count": 1
+      },
+      ".xml": {
+        "mb": 0.09,
+        "count": 229
+      },
+      ".mat": {
+        "mb": 0.04,
+        "count": 1
+      },
+      ".gz": {
+        "mb": 0.04,
+        "count": 1
+      },
+      ".kotlin_builtins": {
+        "mb": 0.01,
+        "count": 7
+      },
+      ".ttf": {
+        "mb": 0.0,
+        "count": 1
+      },
+      ".int": {
+        "mb": 0.0,
+        "count": 2
+      },
+      ".stats": {
+        "mb": 0.0,
+        "count": 1
+      },
+      ".bin": {
+        "mb": 0.0,
+        "count": 1
+      },
+      ".json": {
+        "mb": 0.0,
+        "count": 3
+      }
+    },
+    "by_abi": {
+      "x86": {
+        "mb": 27.8,
+        "count": 5
+      },
+      "x86_64": {
+        "mb": 27.67,
+        "count": 5
+      },
+      "arm64-v8a": {
+        "mb": 25.77,
+        "count": 5
+      },
+      "armeabi-v7a": {
+        "mb": 19.53,
+        "count": 5
+      },
+      "mips64": {
+        "mb": 0.14,
+        "count": 1
+      },
+      "mips": {
+        "mb": 0.12,
+        "count": 1
+      },
+      "armeabi": {
+        "mb": 0.12,
+        "count": 1
+      }
+    },
+    "groups": {
+      "onnx_runtime_so": {
+        "bytes": 65316536,
+        "mb": 62.29,
+        "count": 8
+      },
+      "vosk_so": {
+        "bytes": 39761100,
+        "mb": 37.92,
+        "count": 4
+      },
+      "bge_model": {
+        "bytes": 34246583,
+        "mb": 32.66,
+        "count": 5
+      },
+      "vosk_model": {
+        "bytes": 70898932,
+        "mb": 67.61,
+        "count": 14
+      },
+      "all_native_so": {
+        "bytes": 106077128,
+        "mb": 101.16,
+        "count": 23
+      },
+      "all_dex": {
+        "bytes": 20767845,
+        "mb": 19.81,
+        "count": 9
+      },
+      "png": {
+        "bytes": 838147,
+        "mb": 0.8,
+        "count": 416
+      },
+      "audio": {
+        "bytes": 860805,
+        "mb": 0.82,
+        "count": 12
+      },
+      "fst": {
+        "bytes": 46430789,
+        "mb": 44.28,
+        "count": 2
+      }
+    },
+    "top_files": [
+      {
+        "name": "assets/bge-model/model_quantized.onnx",
+        "mb": 32.44,
+        "raw_mb": 32.44,
+        "method": 0
+      },
+      {
+        "name": "assets/vosk-model/graph/Gr.fst",
+        "mb": 22.9,
+        "raw_mb": 22.9,
+        "method": 0
+      },
+      {
+        "name": "assets/vosk-model/graph/HCLr.fst",
+        "mb": 21.38,
+        "raw_mb": 21.38,
+        "method": 0
+      },
+      {
+        "name": "lib/x86/libonnxruntime.so",
+        "mb": 17.18,
+        "raw_mb": 17.18,
+        "method": 0
+      },
+      {
+        "name": "lib/x86_64/libonnxruntime.so",
+        "mb": 16.98,
+        "raw_mb": 16.98,
+        "method": 0
+      },
+      {
+        "name": "lib/arm64-v8a/libonnxruntime.so",
+        "mb": 15.29,
+        "raw_mb": 15.29,
+        "method": 0
+      },
+      {
+        "name": "assets/vosk-model/am/final.mdl",
+        "mb": 15.22,
+        "raw_mb": 15.22,
+        "method": 0
+      },
+      {
+        "name": "lib/armeabi-v7a/libonnxruntime.so",
+        "mb": 10.24,
+        "raw_mb": 10.24,
+        "method": 0
+      },
+      {
+        "name": "classes.dex",
+        "mb": 10.09,
+        "raw_mb": 39.61,
+        "method": 8
+      },
+      {
+        "name": "lib/x86/libvosk.so",
+        "mb": 9.92,
+        "raw_mb": 9.92,
+        "method": 0
+      },
+      {
+        "name": "lib/x86_64/libvosk.so",
+        "mb": 9.86,
+        "raw_mb": 9.86,
+        "method": 0
+      },
+      {
+        "name": "lib/arm64-v8a/libvosk.so",
+        "mb": 9.58,
+        "raw_mb": 9.58,
+        "method": 0
+      },
+      {
+        "name": "lib/armeabi-v7a/libvosk.so",
+        "mb": 8.57,
+        "raw_mb": 8.57,
+        "method": 0
+      },
+      {
+        "name": "assets/vosk-model/ivector/final.ie",
+        "mb": 7.9,
+        "raw_mb": 7.9,
+        "method": 0
+      },
+      {
+        "name": "classes8.dex",
+        "mb": 5.55,
+        "raw_mb": 13.65,
+        "method": 8
+      },
+      {
+        "name": "classes9.dex",
+        "mb": 3.6,
+        "raw_mb": 9.0,
+        "method": 8
+      },
+      {
+        "name": "resources.arsc",
+        "mb": 0.88,
+        "raw_mb": 0.88,
+        "method": 0
+      },
+      {
+        "name": "lib/arm64-v8a/libonnxruntime4j_jni.so",
+        "mb": 0.72,
+        "raw_mb": 0.72,
+        "method": 0
+      },
+      {
+        "name": "lib/x86_64/libonnxruntime4j_jni.so",
+        "mb": 0.71,
+        "raw_mb": 0.71,
+        "method": 0
+      },
+      {
+        "name": "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+        "mb": 0.59,
+        "raw_mb": 0.59,
+        "method": 0
+      },
+      {
+        "name": "lib/x86/libonnxruntime4j_jni.so",
+        "mb": 0.58,
+        "raw_mb": 0.58,
+        "method": 0
+      },
+      {
+        "name": "res/drawable/qq_group_qr.png",
+        "mb": 0.45,
+        "raw_mb": 0.45,
+        "method": 0
+      },
+      {
+        "name": "classes7.dex",
+        "mb": 0.37,
+        "raw_mb": 0.92,
+        "method": 8
+      },
+      {
+        "name": "assets/bge-model/vocab.txt",
+        "mb": 0.22,
+        "raw_mb": 0.22,
+        "method": 0
+      },
+      {
+        "name": "res/raw/part_b_intro.mp3",
+        "mb": 0.18,
+        "raw_mb": 0.18,
+        "method": 0
+      },
+      {
+        "name": "lib/arm64-v8a/libjnidispatch.so",
+        "mb": 0.17,
+        "raw_mb": 0.17,
+        "method": 0
+      },
+      {
+        "name": "assets/vosk-model/ivector/final.dubm",
+        "mb": 0.16,
+        "raw_mb": 0.16,
+        "method": 0
+      },
+      {
+        "name": "lib/mips64/libjnidispatch.so",
+        "mb": 0.14,
+        "raw_mb": 0.14,
+        "method": 0
+      },
+      {
+        "name": "lib/mips/libjnidispatch.so",
+        "mb": 0.12,
+        "raw_mb": 0.12,
+        "method": 0
+      },
+      {
+        "name": "lib/armeabi/libjnidispatch.so",
+        "mb": 0.12,
+        "raw_mb": 0.12,
+        "method": 0
+      }
+    ]
+  },
+  "estimate": {
+    "remove_bge_and_onnxruntime": 94.95,
+    "vosk_ondemand": 105.53,
+    "abi_split_arm64_only": 75.38,
+    "r8_dex_shrink": 6.93,
+    "png_to_webp": 0.52,
+    "estimated_total_saving": 183.1,
+    "estimated_final_apk_mb": 40.79
+  },
+  "entries": [
+    {
+      "name": "META-INF/com/android/build/gradle/app-metadata.properties",
+      "compressed": 51,
+      "uncompressed": 56,
+      "method": 8,
+      "local_offset": 0
+    },
+    {
+      "name": "classes.dex",
+      "compressed": 10578732,
+      "uncompressed": 41535352,
+      "method": 8,
+      "local_offset": 138
+    },
+    {
+      "name": "classes2.dex",
+      "compressed": 54377,
+      "uncompressed": 185472,
+      "method": 8,
+      "local_offset": 10578911
+    },
+    {
+      "name": "classes3.dex",
+      "compressed": 22777,
+      "uncompressed": 52696,
+      "method": 8,
+      "local_offset": 10633330
+    },
+    {
+      "name": "classes4.dex",
+      "compressed": 42627,
+      "uncompressed": 84908,
+      "method": 8,
+      "local_offset": 10656149
+    },
+    {
+      "name": "classes5.dex",
+      "compressed": 29775,
+      "uncompressed": 68260,
+      "method": 8,
+      "local_offset": 10698818
+    },
+    {
+      "name": "classes6.dex",
+      "compressed": 56037,
+      "uncompressed": 113936,
+      "method": 8,
+      "local_offset": 10728635
+    },
+    {
+      "name": "classes7.dex",
+      "compressed": 388780,
+      "uncompressed": 967104,
+      "method": 8,
+      "local_offset": 10784714
+    },
+    {
+      "name": "classes8.dex",
+      "compressed": 5823486,
+      "uncompressed": 14314392,
+      "method": 8,
+      "local_offset": 11173536
+    },
+    {
+      "name": "classes9.dex",
+      "compressed": 3771254,
+      "uncompressed": 9438384,
+      "method": 8,
+      "local_offset": 16997064
+    },
+    {
+      "name": "lib/arm64-v8a/libandroidx.graphics.path.so",
+      "compressed": 10096,
+      "uncompressed": 10096,
+      "method": 0,
+      "local_offset": 20768360
+    },
+    {
+      "name": "lib/arm64-v8a/libjnidispatch.so",
+      "compressed": 176520,
+      "uncompressed": 176520,
+      "method": 0,
+      "local_offset": 20785008
+    },
+    {
+      "name": "lib/arm64-v8a/libonnxruntime.so",
+      "compressed": 16035920,
+      "uncompressed": 16035920,
+      "method": 0,
+      "local_offset": 20967816
+    },
+    {
+      "name": "lib/arm64-v8a/libonnxruntime4j_jni.so",
+      "compressed": 760104,
+      "uncompressed": 760104,
+      "method": 0,
+      "local_offset": 37007440
+    },
+    {
+      "name": "lib/arm64-v8a/libvosk.so",
+      "compressed": 10042800,
+      "uncompressed": 10042800,
+      "method": 0,
+      "local_offset": 37771560
+    },
+    {
+      "name": "lib/armeabi-v7a/libandroidx.graphics.path.so",
+      "compressed": 7252,
+      "uncompressed": 7252,
+      "method": 0,
+      "local_offset": 47824304
+    },
+    {
+      "name": "lib/armeabi-v7a/libjnidispatch.so",
+      "compressed": 126496,
+      "uncompressed": 126496,
+      "method": 0,
+      "local_offset": 47832148
+    },
+    {
+      "name": "lib/armeabi-v7a/libonnxruntime.so",
+      "compressed": 10739204,
+      "uncompressed": 10739204,
+      "method": 0,
+      "local_offset": 47967776
+    },
+    {
+      "name": "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+      "compressed": 620088,
+      "uncompressed": 620088,
+      "method": 0,
+      "local_offset": 58711556
+    },
+    {
+      "name": "lib/armeabi-v7a/libvosk.so",
+      "compressed": 8985628,
+      "uncompressed": 8985628,
+      "method": 0,
+      "local_offset": 59340344
+    },
+    {
+      "name": "lib/armeabi/libjnidispatch.so",
+      "compressed": 126980,
+      "uncompressed": 126980,
+      "method": 0,
+      "local_offset": 68328476
+    },
+    {
+      "name": "lib/mips/libjnidispatch.so",
+      "compressed": 130556,
+      "uncompressed": 130556,
+      "method": 0,
+      "local_offset": 68464644
+    },
+    {
+      "name": "lib/mips64/libjnidispatch.so",
+      "compressed": 150256,
+      "uncompressed": 150256,
+      "method": 0,
+      "local_offset": 68599292
+    },
+    {
+      "name": "lib/x86/libandroidx.graphics.path.so",
+      "compressed": 9284,
+      "uncompressed": 9284,
+      "method": 0,
+      "local_offset": 68750064
+    },
+    {
+      "name": "lib/x86/libjnidispatch.so",
+      "compressed": 124380,
+      "uncompressed": 124380,
+      "method": 0,
+      "local_offset": 68772932
+    },
+    {
+      "name": "lib/x86/libonnxruntime.so",
+      "compressed": 18012000,
+      "uncompressed": 18012000,
+      "method": 0,
+      "local_offset": 68904412
+    },
+    {
+      "name": "lib/x86/libonnxruntime4j_jni.so",
+      "compressed": 604204,
+      "uncompressed": 604204,
+      "method": 0,
+      "local_offset": 86923104
+    },
+    {
+      "name": "lib/x86/libvosk.so",
+      "compressed": 10397552,
+      "uncompressed": 10397552,
+      "method": 0,
+      "local_offset": 87537708
+    },
+    {
+      "name": "lib/x86_64/libandroidx.graphics.path.so",
+      "compressed": 10760,
+      "uncompressed": 10760,
+      "method": 0,
+      "local_offset": 97937264
+    },
+    {
+      "name": "lib/x86_64/libjnidispatch.so",
+      "compressed": 126912,
+      "uncompressed": 126912,
+      "method": 0,
+      "local_offset": 97954312
+    },
+    {
+      "name": "lib/x86_64/libonnxruntime.so",
+      "compressed": 17800912,
+      "uncompressed": 17800912,
+      "method": 0,
+      "local_offset": 98086848
+    },
+    {
+      "name": "lib/x86_64/libonnxruntime4j_jni.so",
+      "compressed": 744104,
+      "uncompressed": 744104,
+      "method": 0,
+      "local_offset": 115891920
+    },
+    {
+      "name": "lib/x86_64/libvosk.so",
+      "compressed": 10335120,
+      "uncompressed": 10335120,
+      "method": 0,
+      "local_offset": 116644520
+    },
+    {
+      "name": "assets/bge-model/config.json",
+      "compressed": 369,
+      "uncompressed": 683,
+      "method": 8,
+      "local_offset": 126989200
+    },
+    {
+      "name": "assets/bge-model/model_quantized.onnx",
+      "compressed": 34014426,
+      "uncompressed": 34014426,
+      "method": 0,
+      "local_offset": 126989627
+    },
+    {
+      "name": "assets/bge-model/special_tokens_map.json",
+      "compressed": 72,
+      "uncompressed": 125,
+      "method": 8,
+      "local_offset": 161004122
+    },
+    {
+      "name": "assets/bge-model/tokenizer_config.json",
+      "compressed": 208,
+      "uncompressed": 366,
+      "method": 8,
+      "local_offset": 161004264
+    },
+    {
+      "name": "assets/bge-model/vocab.txt",
+      "compressed": 231508,
+      "uncompressed": 231508,
+      "method": 0,
+      "local_offset": 161004540
+    },
+    {
+      "name": "assets/vosk-model/README",
+      "compressed": 164,
+      "uncompressed": 199,
+      "method": 8,
+      "local_offset": 161236104
+    },
+    {
+      "name": "assets/vosk-model/am/final.mdl",
+      "compressed": 15962575,
+      "uncompressed": 15962575,
+      "method": 0,
+      "local_offset": 161236322
+    },
+    {
+      "name": "assets/vosk-model/conf/mfcc.conf",
+      "compressed": 131,
+      "uncompressed": 131,
+      "method": 0,
+      "local_offset": 177198959
+    },
+    {
+      "name": "assets/vosk-model/conf/model.conf",
+      "compressed": 290,
+      "uncompressed": 290,
+      "method": 0,
+      "local_offset": 177199155
+    },
+    {
+      "name": "assets/vosk-model/graph/Gr.fst",
+      "compressed": 24013795,
+      "uncompressed": 24013795,
+      "method": 0,
+      "local_offset": 177199510
+    },
+    {
+      "name": "assets/vosk-model/graph/HCLr.fst",
+      "compressed": 22416994,
+      "uncompressed": 22416994,
+      "method": 0,
+      "local_offset": 201213367
+    },
+    {
+      "name": "assets/vosk-model/graph/disambig_tid.int",
+      "compressed": 102,
+      "uncompressed": 102,
+      "method": 0,
+      "local_offset": 223630426
+    },
+    {
+      "name": "assets/vosk-model/graph/phones/word_boundary.int",
+      "compressed": 1761,
+      "uncompressed": 1761,
+      "method": 0,
+      "local_offset": 223630598
+    },
+    {
+      "name": "assets/vosk-model/ivector/final.dubm",
+      "compressed": 168048,
+      "uncompressed": 168048,
+      "method": 0,
+      "local_offset": 223632437
+    },
+    {
+      "name": "assets/vosk-model/ivector/final.ie",
+      "compressed": 8288887,
+      "uncompressed": 8288887,
+      "method": 0,
+      "local_offset": 223800552
+    },
+    {
+      "name": "assets/vosk-model/ivector/final.mat",
+      "compressed": 44975,
+      "uncompressed": 44975,
+      "method": 0,
+      "local_offset": 232089503
+    },
+    {
+      "name": "assets/vosk-model/ivector/global_cmvn.stats",
+      "compressed": 1080,
+      "uncompressed": 1080,
+      "method": 0,
+      "local_offset": 232134543
+    },
+    {
+      "name": "assets/vosk-model/ivector/online_cmvn.conf",
+      "compressed": 95,
+      "uncompressed": 95,
+      "method": 0,
+      "local_offset": 232135696
+    },
+    {
+      "name": "assets/vosk-model/ivector/splice.conf",
+      "compressed": 35,
+      "uncompressed": 35,
+      "method": 0,
+      "local_offset": 232135863
+    },
+    {
+      "name": "AndroidManifest.xml",
+      "compressed": 2218,
+      "uncompressed": 8300,
+      "method": 8,
+      "local_offset": 232135967
+    },
+    {
+      "name": "res/anim-v21/fragment_fast_out_extra_slow_in.xml",
+      "compressed": 218,
+      "uncompressed": 364,
+      "method": 8,
+      "local_offset": 232138234
+    },
+    {
+      "name": "res/anim/abc_fade_in.xml",
+      "compressed": 216,
+      "uncompressed": 388,
+      "method": 8,
+      "local_offset": 232138530
+    },
+    {
+      "name": "res/anim/abc_fade_out.xml",
+      "compressed": 218,
+      "uncompressed": 388,
+      "method": 8,
+      "local_offset": 232138800
+    },
+    {
+      "name": "res/anim/abc_grow_fade_in_from_bottom.xml",
+      "compressed": 376,
+      "uncompressed": 852,
+      "method": 8,
+      "local_offset": 232139073
+    },
+    {
+      "name": "res/anim/abc_popup_enter.xml",
+      "compressed": 258,
+      "uncompressed": 508,
+      "method": 8,
+      "local_offset": 232139520
+    },
+    {
+      "name": "res/anim/abc_popup_exit.xml",
+      "compressed": 259,
+      "uncompressed": 508,
+      "method": 8,
+      "local_offset": 232139836
+    },
+    {
+      "name": "res/anim/abc_shrink_fade_out_from_bottom.xml",
+      "compressed": 377,
+      "uncompressed": 852,
+      "method": 8,
+      "local_offset": 232140152
+    },
+    {
+      "name": "res/anim/abc_slide_in_bottom.xml",
+      "compressed": 228,
+      "uncompressed": 396,
+      "method": 8,
+      "local_offset": 232140603
+    },
+    {
+      "name": "res/anim/abc_slide_in_top.xml",
+      "compressed": 229,
+      "uncompressed": 396,
+      "method": 8,
+      "local_offset": 232140893
+    },
+    {
+      "name": "res/anim/abc_slide_out_bottom.xml",
+      "compressed": 227,
+      "uncompressed": 396,
+      "method": 8,
+      "local_offset": 232141181
+    },
+    {
+      "name": "res/anim/abc_slide_out_top.xml",
+      "compressed": 228,
+      "uncompressed": 396,
+      "method": 8,
+      "local_offset": 232141471
+    },
+    {
+      "name": "res/anim/abc_tooltip_enter.xml",
+      "compressed": 218,
+      "uncompressed": 388,
+      "method": 8,
+      "local_offset": 232141759
+    },
+    {
+      "name": "res/anim/abc_tooltip_exit.xml",
+      "compressed": 217,
+      "uncompressed": 388,
+      "method": 8,
+      "local_offset": 232142037
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_checked_box_inner_merged_animation.xml",
+      "compressed": 641,
+      "uncompressed": 2124,
+      "method": 8,
+      "local_offset": 232142313
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_checked_box_outer_merged_animation.xml",
+      "compressed": 741,
+      "uncompressed": 2780,
+      "method": 8,
+      "local_offset": 232143047
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_checked_icon_null_animation.xml",
+      "compressed": 397,
+      "uncompressed": 1196,
+      "method": 8,
+      "local_offset": 232143881
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_unchecked_box_inner_merged_animation.xml",
+      "compressed": 660,
+      "uncompressed": 2360,
+      "method": 8,
+      "local_offset": 232144364
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_unchecked_check_path_merged_animation.xml",
+      "compressed": 731,
+      "uncompressed": 2520,
+      "method": 8,
+      "local_offset": 232145119
+    },
+    {
+      "name": "res/anim/btn_checkbox_to_unchecked_icon_null_animation.xml",
+      "compressed": 397,
+      "uncompressed": 1196,
+      "method": 8,
+      "local_offset": 232145946
+    },
+    {
+      "name": "res/anim/btn_radio_to_off_mtrl_dot_group_animation.xml",
+      "compressed": 430,
+      "uncompressed": 1656,
+      "method": 8,
+      "local_offset": 232146431
+    },
+    {
+      "name": "res/anim/btn_radio_to_off_mtrl_ring_outer_animation.xml",
+      "compressed": 433,
+      "uncompressed": 1656,
+      "method": 8,
+      "local_offset": 232146945
+    },
+    {
+      "name": "res/anim/btn_radio_to_off_mtrl_ring_outer_path_animation.xml",
+      "compressed": 373,
+      "uncompressed": 1028,
+      "method": 8,
+      "local_offset": 232147463
+    },
+    {
+      "name": "res/anim/btn_radio_to_on_mtrl_dot_group_animation.xml",
+      "compressed": 421,
+      "uncompressed": 1656,
+      "method": 8,
+      "local_offset": 232147926
+    },
+    {
+      "name": "res/anim/btn_radio_to_on_mtrl_ring_outer_animation.xml",
+      "compressed": 428,
+      "uncompressed": 1656,
+      "method": 8,
+      "local_offset": 232148430
+    },
+    {
+      "name": "res/anim/btn_radio_to_on_mtrl_ring_outer_path_animation.xml",
+      "compressed": 380,
+      "uncompressed": 1028,
+      "method": 8,
+      "local_offset": 232148942
+    },
+    {
+      "name": "res/animator/fragment_close_enter.xml",
+      "compressed": 395,
+      "uncompressed": 1128,
+      "method": 8,
+      "local_offset": 232149411
+    },
+    {
+      "name": "res/animator/fragment_close_exit.xml",
+      "compressed": 395,
+      "uncompressed": 1128,
+      "method": 8,
+      "local_offset": 232149873
+    },
+    {
+      "name": "res/animator/fragment_fade_enter.xml",
+      "compressed": 265,
+      "uncompressed": 452,
+      "method": 8,
+      "local_offset": 232150334
+    },
+    {
+      "name": "res/animator/fragment_fade_exit.xml",
+      "compressed": 265,
+      "uncompressed": 452,
+      "method": 8,
+      "local_offset": 232150665
+    },
+    {
+      "name": "res/animator/fragment_open_enter.xml",
+      "compressed": 388,
+      "uncompressed": 1128,
+      "method": 8,
+      "local_offset": 232150995
+    },
+    {
+      "name": "res/animator/fragment_open_exit.xml",
+      "compressed": 392,
+      "uncompressed": 1128,
+      "method": 8,
+      "local_offset": 232151449
+    },
+    {
+      "name": "res/color-v23/abc_btn_colored_borderless_text_material.xml",
+      "compressed": 242,
+      "uncompressed": 500,
+      "method": 8,
+      "local_offset": 232151906
+    },
+    {
+      "name": "res/color-v23/abc_btn_colored_text_material.xml",
+      "compressed": 242,
+      "uncompressed": 500,
+      "method": 8,
+      "local_offset": 232152236
+    },
+    {
+      "name": "res/color-v23/abc_color_highlight_material.xml",
+      "compressed": 256,
+      "uncompressed": 544,
+      "method": 8,
+      "local_offset": 232152555
+    },
+    {
+      "name": "res/color-v23/abc_tint_btn_checkable.xml",
+      "compressed": 272,
+      "uncompressed": 624,
+      "method": 8,
+      "local_offset": 232152887
+    },
+    {
+      "name": "res/color-v23/abc_tint_default.xml",
+      "compressed": 368,
+      "uncompressed": 1120,
+      "method": 8,
+      "local_offset": 232153229
+    },
+    {
+      "name": "res/color-v23/abc_tint_edittext.xml",
+      "compressed": 282,
+      "uncompressed": 668,
+      "method": 8,
+      "local_offset": 232153661
+    },
+    {
+      "name": "res/color-v23/abc_tint_seek_thumb.xml",
+      "compressed": 240,
+      "uncompressed": 500,
+      "method": 8,
+      "local_offset": 232154008
+    },
+    {
+      "name": "res/color-v23/abc_tint_spinner.xml",
+      "compressed": 282,
+      "uncompressed": 668,
+      "method": 8,
+      "local_offset": 232154315
+    },
+    {
+      "name": "res/color-v23/abc_tint_switch_track.xml",
+      "compressed": 281,
+      "uncompressed": 664,
+      "method": 8,
+      "local_offset": 232154661
+    },
+    {
+      "name": "res/color/abc_background_cache_hint_selector_material_dark.xml",
+      "compressed": 231,
+      "uncompressed": 468,
+      "method": 8,
+      "local_offset": 232155011
+    },
+    {
+      "name": "res/color/abc_background_cache_hint_selector_material_light.xml",
+      "compressed": 231,
+      "uncompressed": 468,
+      "method": 8,
+      "local_offset": 232155334
+    },
+    {
+      "name": "res/color/abc_hint_foreground_material_dark.xml",
+      "compressed": 261,
+      "uncompressed": 564,
+      "method": 8,
+      "local_offset": 232155658
+    },
+    {
+      "name": "res/color/abc_hint_foreground_material_light.xml",
+      "compressed": 261,
+      "uncompressed": 564,
+      "method": 8,
+      "local_offset": 232155996
+    },
+    {
+      "name": "res/color/abc_primary_text_disable_only_material_dark.xml",
+      "compressed": 228,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232156335
+    },
+    {
+      "name": "res/color/abc_primary_text_disable_only_material_light.xml",
+      "compressed": 228,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232156650
+    },
+    {
+      "name": "res/color/abc_primary_text_material_dark.xml",
+      "compressed": 229,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232156966
+    },
+    {
+      "name": "res/color/abc_primary_text_material_light.xml",
+      "compressed": 229,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232157269
+    },
+    {
+      "name": "res/color/abc_search_url_text.xml",
+      "compressed": 250,
+      "uncompressed": 588,
+      "method": 8,
+      "local_offset": 232157573
+    },
+    {
+      "name": "res/color/abc_secondary_text_material_dark.xml",
+      "compressed": 228,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232157886
+    },
+    {
+      "name": "res/color/abc_secondary_text_material_light.xml",
+      "compressed": 229,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232158190
+    },
+    {
+      "name": "res/color/switch_thumb_material_dark.xml",
+      "compressed": 228,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232158496
+    },
+    {
+      "name": "res/color/switch_thumb_material_light.xml",
+      "compressed": 228,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232158794
+    },
+    {
+      "name": "res/color/vector_tint_color.xml",
+      "compressed": 180,
+      "uncompressed": 340,
+      "method": 8,
+      "local_offset": 232159093
+    },
+    {
+      "name": "res/color/vector_tint_theme_color.xml",
+      "compressed": 182,
+      "uncompressed": 340,
+      "method": 8,
+      "local_offset": 232159334
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_edit_mode_logo.xml",
+      "compressed": 1566,
+      "uncompressed": 4112,
+      "method": 8,
+      "local_offset": 232159583
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_audiotrack.xml",
+      "compressed": 529,
+      "uncompressed": 1120,
+      "method": 8,
+      "local_offset": 232161225
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_check.xml",
+      "compressed": 356,
+      "uncompressed": 700,
+      "method": 8,
+      "local_offset": 232161829
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_chevron_left.xml",
+      "compressed": 321,
+      "uncompressed": 596,
+      "method": 8,
+      "local_offset": 232162255
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_chevron_right.xml",
+      "compressed": 329,
+      "uncompressed": 596,
+      "method": 8,
+      "local_offset": 232162653
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_default_album_image.xml",
+      "compressed": 423,
+      "uncompressed": 844,
+      "method": 8,
+      "local_offset": 232163060
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_forward.xml",
+      "compressed": 448,
+      "uncompressed": 880,
+      "method": 8,
+      "local_offset": 232163567
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_fullscreen_enter.xml",
+      "compressed": 357,
+      "uncompressed": 644,
+      "method": 8,
+      "local_offset": 232164087
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_fullscreen_exit.xml",
+      "compressed": 361,
+      "uncompressed": 644,
+      "method": 8,
+      "local_offset": 232164525
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_pause_circle_filled.xml",
+      "compressed": 356,
+      "uncompressed": 656,
+      "method": 8,
+      "local_offset": 232164966
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_play_circle_filled.xml",
+      "compressed": 352,
+      "uncompressed": 640,
+      "method": 8,
+      "local_offset": 232165406
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_rewind.xml",
+      "compressed": 446,
+      "uncompressed": 880,
+      "method": 8,
+      "local_offset": 232165841
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_settings.xml",
+      "compressed": 654,
+      "uncompressed": 1420,
+      "method": 8,
+      "local_offset": 232166358
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_skip_next.xml",
+      "compressed": 316,
+      "uncompressed": 584,
+      "method": 8,
+      "local_offset": 232167085
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_skip_previous.xml",
+      "compressed": 315,
+      "uncompressed": 584,
+      "method": 8,
+      "local_offset": 232167475
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_speed.xml",
+      "compressed": 598,
+      "uncompressed": 1148,
+      "method": 8,
+      "local_offset": 232167868
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_subtitle_off.xml",
+      "compressed": 521,
+      "uncompressed": 1212,
+      "method": 8,
+      "local_offset": 232168536
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_ic_subtitle_on.xml",
+      "compressed": 465,
+      "uncompressed": 960,
+      "method": 8,
+      "local_offset": 232169134
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_fastforward.xml",
+      "compressed": 314,
+      "uncompressed": 588,
+      "method": 8,
+      "local_offset": 232169675
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_fullscreen_enter.xml",
+      "compressed": 355,
+      "uncompressed": 684,
+      "method": 8,
+      "local_offset": 232170067
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_fullscreen_exit.xml",
+      "compressed": 356,
+      "uncompressed": 684,
+      "method": 8,
+      "local_offset": 232170505
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_next.xml",
+      "compressed": 315,
+      "uncompressed": 584,
+      "method": 8,
+      "local_offset": 232170943
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_pause.xml",
+      "compressed": 318,
+      "uncompressed": 588,
+      "method": 8,
+      "local_offset": 232171329
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_play.xml",
+      "compressed": 301,
+      "uncompressed": 564,
+      "method": 8,
+      "local_offset": 232171719
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_previous.xml",
+      "compressed": 315,
+      "uncompressed": 584,
+      "method": 8,
+      "local_offset": 232172091
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_repeat_all.xml",
+      "compressed": 345,
+      "uncompressed": 620,
+      "method": 8,
+      "local_offset": 232172481
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_repeat_off.xml",
+      "compressed": 346,
+      "uncompressed": 620,
+      "method": 8,
+      "local_offset": 232172903
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_repeat_one.xml",
+      "compressed": 365,
+      "uncompressed": 656,
+      "method": 8,
+      "local_offset": 232173326
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_rewind.xml",
+      "compressed": 319,
+      "uncompressed": 600,
+      "method": 8,
+      "local_offset": 232173768
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_shuffle_off.xml",
+      "compressed": 406,
+      "uncompressed": 724,
+      "method": 8,
+      "local_offset": 232174160
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_shuffle_on.xml",
+      "compressed": 404,
+      "uncompressed": 724,
+      "method": 8,
+      "local_offset": 232174644
+    },
+    {
+      "name": "res/drawable-anydpi-v21/exo_icon_stop.xml",
+      "compressed": 327,
+      "uncompressed": 660,
+      "method": 8,
+      "local_offset": 232175125
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_answer.xml",
+      "compressed": 663,
+      "uncompressed": 1356,
+      "method": 8,
+      "local_offset": 232175523
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_answer_low.xml",
+      "compressed": 644,
+      "uncompressed": 1320,
+      "method": 8,
+      "local_offset": 232176258
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_answer_video.xml",
+      "compressed": 421,
+      "uncompressed": 772,
+      "method": 8,
+      "local_offset": 232176978
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_answer_video_low.xml",
+      "compressed": 401,
+      "uncompressed": 736,
+      "method": 8,
+      "local_offset": 232177477
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_decline.xml",
+      "compressed": 734,
+      "uncompressed": 1528,
+      "method": 8,
+      "local_offset": 232177960
+    },
+    {
+      "name": "res/drawable-anydpi-v21/ic_call_decline_low.xml",
+      "compressed": 712,
+      "uncompressed": 1492,
+      "method": 8,
+      "local_offset": 232178767
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_ab_share_pack_mtrl_alpha.9.png",
+      "compressed": 272,
+      "uncompressed": 272,
+      "method": 0,
+      "local_offset": 232179556
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_check_to_on_mtrl_000.png",
+      "compressed": 227,
+      "uncompressed": 227,
+      "method": 0,
+      "local_offset": 232179916
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_check_to_on_mtrl_015.png",
+      "compressed": 404,
+      "uncompressed": 404,
+      "method": 0,
+      "local_offset": 232180227
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_radio_to_on_mtrl_000.png",
+      "compressed": 464,
+      "uncompressed": 464,
+      "method": 0,
+      "local_offset": 232180716
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "compressed": 563,
+      "uncompressed": 563,
+      "method": 0,
+      "local_offset": 232181264
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "compressed": 1096,
+      "uncompressed": 1096,
+      "method": 0,
+      "local_offset": 232181911
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "compressed": 1243,
+      "uncompressed": 1243,
+      "method": 0,
+      "local_offset": 232183096
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_cab_background_top_mtrl_alpha.9.png",
+      "compressed": 226,
+      "uncompressed": 226,
+      "method": 0,
+      "local_offset": 232184427
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_ic_commit_search_api_mtrl_alpha.png",
+      "compressed": 171,
+      "uncompressed": 171,
+      "method": 0,
+      "local_offset": 232184746
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_divider_mtrl_alpha.9.png",
+      "compressed": 167,
+      "uncompressed": 167,
+      "method": 0,
+      "local_offset": 232185007
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_focused_holo.9.png",
+      "compressed": 244,
+      "uncompressed": 244,
+      "method": 0,
+      "local_offset": 232185259
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_longpressed_holo.9.png",
+      "compressed": 212,
+      "uncompressed": 212,
+      "method": 0,
+      "local_offset": 232185584
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_pressed_holo_dark.9.png",
+      "compressed": 208,
+      "uncompressed": 208,
+      "method": 0,
+      "local_offset": 232185880
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_pressed_holo_light.9.png",
+      "compressed": 208,
+      "uncompressed": 208,
+      "method": 0,
+      "local_offset": 232186172
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_selector_disabled_holo_dark.9.png",
+      "compressed": 228,
+      "uncompressed": 228,
+      "method": 0,
+      "local_offset": 232186464
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_list_selector_disabled_holo_light.9.png",
+      "compressed": 229,
+      "uncompressed": 229,
+      "method": 0,
+      "local_offset": 232186788
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_menu_hardkey_panel_mtrl_mult.9.png",
+      "compressed": 738,
+      "uncompressed": 738,
+      "method": 0,
+      "local_offset": 232187113
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "compressed": 1098,
+      "uncompressed": 1098,
+      "method": 0,
+      "local_offset": 232187942
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_scrubber_control_off_mtrl_alpha.png",
+      "compressed": 201,
+      "uncompressed": 201,
+      "method": 0,
+      "local_offset": 232189130
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_scrubber_control_to_pressed_mtrl_000.png",
+      "compressed": 196,
+      "uncompressed": 196,
+      "method": 0,
+      "local_offset": 232189421
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_scrubber_control_to_pressed_mtrl_005.png",
+      "compressed": 272,
+      "uncompressed": 272,
+      "method": 0,
+      "local_offset": 232189712
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_scrubber_primary_mtrl_alpha.9.png",
+      "compressed": 205,
+      "uncompressed": 205,
+      "method": 0,
+      "local_offset": 232190080
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_scrubber_track_mtrl_alpha.9.png",
+      "compressed": 196,
+      "uncompressed": 196,
+      "method": 0,
+      "local_offset": 232190373
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 345,
+      "uncompressed": 345,
+      "method": 0,
+      "local_offset": 232190656
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_switch_track_mtrl_alpha.9.png",
+      "compressed": 484,
+      "uncompressed": 484,
+      "method": 0,
+      "local_offset": 232191085
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_tab_indicator_mtrl_alpha.9.png",
+      "compressed": 190,
+      "uncompressed": 190,
+      "method": 0,
+      "local_offset": 232191656
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_text_select_handle_left_mtrl.png",
+      "compressed": 278,
+      "uncompressed": 278,
+      "method": 0,
+      "local_offset": 232191934
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_text_select_handle_middle_mtrl.png",
+      "compressed": 396,
+      "uncompressed": 396,
+      "method": 0,
+      "local_offset": 232192302
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_text_select_handle_right_mtrl.png",
+      "compressed": 262,
+      "uncompressed": 262,
+      "method": 0,
+      "local_offset": 232192788
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_textfield_activated_mtrl_alpha.9.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232193138
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_textfield_default_mtrl_alpha.9.png",
+      "compressed": 192,
+      "uncompressed": 192,
+      "method": 0,
+      "local_offset": 232193418
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_textfield_search_activated_mtrl_alpha.9.png",
+      "compressed": 178,
+      "uncompressed": 178,
+      "method": 0,
+      "local_offset": 232193700
+    },
+    {
+      "name": "res/drawable-hdpi-v4/abc_textfield_search_default_mtrl_alpha.9.png",
+      "compressed": 178,
+      "uncompressed": 178,
+      "method": 0,
+      "local_offset": 232193978
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_edit_mode_logo.png",
+      "compressed": 458,
+      "uncompressed": 458,
+      "method": 0,
+      "local_offset": 232194254
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_audiotrack.png",
+      "compressed": 390,
+      "uncompressed": 390,
+      "method": 0,
+      "local_offset": 232194786
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_check.png",
+      "compressed": 174,
+      "uncompressed": 174,
+      "method": 0,
+      "local_offset": 232195250
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_chevron_left.png",
+      "compressed": 140,
+      "uncompressed": 140,
+      "method": 0,
+      "local_offset": 232195494
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_chevron_right.png",
+      "compressed": 138,
+      "uncompressed": 138,
+      "method": 0,
+      "local_offset": 232195708
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_default_album_image.png",
+      "compressed": 1362,
+      "uncompressed": 1362,
+      "method": 0,
+      "local_offset": 232195922
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_forward.png",
+      "compressed": 290,
+      "uncompressed": 290,
+      "method": 0,
+      "local_offset": 232197366
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 139,
+      "uncompressed": 139,
+      "method": 0,
+      "local_offset": 232197726
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 125,
+      "uncompressed": 125,
+      "method": 0,
+      "local_offset": 232197943
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 362,
+      "uncompressed": 362,
+      "method": 0,
+      "local_offset": 232198145
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 391,
+      "uncompressed": 391,
+      "method": 0,
+      "local_offset": 232198590
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_rewind.png",
+      "compressed": 289,
+      "uncompressed": 289,
+      "method": 0,
+      "local_offset": 232199063
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_settings.png",
+      "compressed": 309,
+      "uncompressed": 309,
+      "method": 0,
+      "local_offset": 232199421
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_skip_next.png",
+      "compressed": 225,
+      "uncompressed": 225,
+      "method": 0,
+      "local_offset": 232199801
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_skip_previous.png",
+      "compressed": 230,
+      "uncompressed": 230,
+      "method": 0,
+      "local_offset": 232200097
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_speed.png",
+      "compressed": 386,
+      "uncompressed": 386,
+      "method": 0,
+      "local_offset": 232200402
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 224,
+      "uncompressed": 224,
+      "method": 0,
+      "local_offset": 232200858
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 221,
+      "uncompressed": 221,
+      "method": 0,
+      "local_offset": 232201156
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_circular_play.png",
+      "compressed": 995,
+      "uncompressed": 995,
+      "method": 0,
+      "local_offset": 232201453
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_fastforward.png",
+      "compressed": 283,
+      "uncompressed": 283,
+      "method": 0,
+      "local_offset": 232202527
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 107,
+      "uncompressed": 107,
+      "method": 0,
+      "local_offset": 232202887
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 105,
+      "uncompressed": 105,
+      "method": 0,
+      "local_offset": 232203075
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_next.png",
+      "compressed": 264,
+      "uncompressed": 264,
+      "method": 0,
+      "local_offset": 232203261
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_pause.png",
+      "compressed": 90,
+      "uncompressed": 90,
+      "method": 0,
+      "local_offset": 232203596
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_play.png",
+      "compressed": 233,
+      "uncompressed": 233,
+      "method": 0,
+      "local_offset": 232203758
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_previous.png",
+      "compressed": 255,
+      "uncompressed": 255,
+      "method": 0,
+      "local_offset": 232204061
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_repeat_all.png",
+      "compressed": 203,
+      "uncompressed": 203,
+      "method": 0,
+      "local_offset": 232204391
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_repeat_off.png",
+      "compressed": 223,
+      "uncompressed": 223,
+      "method": 0,
+      "local_offset": 232204671
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_repeat_one.png",
+      "compressed": 223,
+      "uncompressed": 223,
+      "method": 0,
+      "local_offset": 232204971
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_rewind.png",
+      "compressed": 332,
+      "uncompressed": 332,
+      "method": 0,
+      "local_offset": 232205271
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 265,
+      "uncompressed": 265,
+      "method": 0,
+      "local_offset": 232205676
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 268,
+      "uncompressed": 268,
+      "method": 0,
+      "local_offset": 232206017
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_stop.png",
+      "compressed": 90,
+      "uncompressed": 90,
+      "method": 0,
+      "local_offset": 232206360
+    },
+    {
+      "name": "res/drawable-hdpi-v4/exo_icon_vr.png",
+      "compressed": 291,
+      "uncompressed": 291,
+      "method": 0,
+      "local_offset": 232206518
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_answer.png",
+      "compressed": 472,
+      "uncompressed": 472,
+      "method": 0,
+      "local_offset": 232206875
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_answer_low.png",
+      "compressed": 472,
+      "uncompressed": 472,
+      "method": 0,
+      "local_offset": 232207416
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_answer_video.png",
+      "compressed": 254,
+      "uncompressed": 254,
+      "method": 0,
+      "local_offset": 232207964
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_answer_video_low.png",
+      "compressed": 254,
+      "uncompressed": 254,
+      "method": 0,
+      "local_offset": 232208294
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_decline.png",
+      "compressed": 375,
+      "uncompressed": 375,
+      "method": 0,
+      "local_offset": 232208630
+    },
+    {
+      "name": "res/drawable-hdpi-v4/ic_call_decline_low.png",
+      "compressed": 375,
+      "uncompressed": 375,
+      "method": 0,
+      "local_offset": 232209075
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notification_bg_low_normal.9.png",
+      "compressed": 212,
+      "uncompressed": 212,
+      "method": 0,
+      "local_offset": 232209527
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notification_bg_low_pressed.9.png",
+      "compressed": 225,
+      "uncompressed": 225,
+      "method": 0,
+      "local_offset": 232209824
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notification_bg_normal.9.png",
+      "compressed": 212,
+      "uncompressed": 212,
+      "method": 0,
+      "local_offset": 232210133
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notification_bg_normal_pressed.9.png",
+      "compressed": 225,
+      "uncompressed": 225,
+      "method": 0,
+      "local_offset": 232210424
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notification_oversize_large_icon_bg.png",
+      "compressed": 909,
+      "uncompressed": 909,
+      "method": 0,
+      "local_offset": 232210737
+    },
+    {
+      "name": "res/drawable-hdpi-v4/notify_panel_notification_icon_bg.png",
+      "compressed": 107,
+      "uncompressed": 107,
+      "method": 0,
+      "local_offset": 232211737
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_edit_mode_logo.png",
+      "compressed": 265,
+      "uncompressed": 265,
+      "method": 0,
+      "local_offset": 232211935
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_audiotrack.png",
+      "compressed": 229,
+      "uncompressed": 229,
+      "method": 0,
+      "local_offset": 232212273
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_check.png",
+      "compressed": 133,
+      "uncompressed": 133,
+      "method": 0,
+      "local_offset": 232212577
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_chevron_left.png",
+      "compressed": 109,
+      "uncompressed": 109,
+      "method": 0,
+      "local_offset": 232212777
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_chevron_right.png",
+      "compressed": 110,
+      "uncompressed": 110,
+      "method": 0,
+      "local_offset": 232212961
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_default_album_image.png",
+      "compressed": 675,
+      "uncompressed": 675,
+      "method": 0,
+      "local_offset": 232213146
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_forward.png",
+      "compressed": 187,
+      "uncompressed": 187,
+      "method": 0,
+      "local_offset": 232213903
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 135,
+      "uncompressed": 135,
+      "method": 0,
+      "local_offset": 232214159
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 130,
+      "uncompressed": 130,
+      "method": 0,
+      "local_offset": 232214375
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 220,
+      "uncompressed": 220,
+      "method": 0,
+      "local_offset": 232214582
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 247,
+      "uncompressed": 247,
+      "method": 0,
+      "local_offset": 232214884
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_rewind.png",
+      "compressed": 189,
+      "uncompressed": 189,
+      "method": 0,
+      "local_offset": 232215211
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_settings.png",
+      "compressed": 193,
+      "uncompressed": 193,
+      "method": 0,
+      "local_offset": 232215469
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_skip_next.png",
+      "compressed": 164,
+      "uncompressed": 164,
+      "method": 0,
+      "local_offset": 232215733
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_skip_previous.png",
+      "compressed": 173,
+      "uncompressed": 173,
+      "method": 0,
+      "local_offset": 232215968
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_speed.png",
+      "compressed": 233,
+      "uncompressed": 233,
+      "method": 0,
+      "local_offset": 232216217
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 174,
+      "uncompressed": 174,
+      "method": 0,
+      "local_offset": 232216517
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 161,
+      "uncompressed": 161,
+      "method": 0,
+      "local_offset": 232216766
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_circular_play.png",
+      "compressed": 457,
+      "uncompressed": 457,
+      "method": 0,
+      "local_offset": 232217001
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_fastforward.png",
+      "compressed": 173,
+      "uncompressed": 173,
+      "method": 0,
+      "local_offset": 232217537
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 139,
+      "uncompressed": 139,
+      "method": 0,
+      "local_offset": 232217785
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 146,
+      "uncompressed": 146,
+      "method": 0,
+      "local_offset": 232218007
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_next.png",
+      "compressed": 152,
+      "uncompressed": 152,
+      "method": 0,
+      "local_offset": 232218234
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_pause.png",
+      "compressed": 88,
+      "uncompressed": 88,
+      "method": 0,
+      "local_offset": 232218456
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_play.png",
+      "compressed": 167,
+      "uncompressed": 167,
+      "method": 0,
+      "local_offset": 232218616
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_previous.png",
+      "compressed": 161,
+      "uncompressed": 161,
+      "method": 0,
+      "local_offset": 232218851
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_repeat_all.png",
+      "compressed": 142,
+      "uncompressed": 142,
+      "method": 0,
+      "local_offset": 232219085
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_repeat_off.png",
+      "compressed": 166,
+      "uncompressed": 166,
+      "method": 0,
+      "local_offset": 232219302
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_repeat_one.png",
+      "compressed": 160,
+      "uncompressed": 160,
+      "method": 0,
+      "local_offset": 232219542
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_rewind.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232219776
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 182,
+      "uncompressed": 182,
+      "method": 0,
+      "local_offset": 232220034
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 187,
+      "uncompressed": 187,
+      "method": 0,
+      "local_offset": 232220294
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_stop.png",
+      "compressed": 88,
+      "uncompressed": 88,
+      "method": 0,
+      "local_offset": 232220555
+    },
+    {
+      "name": "res/drawable-ldpi-v4/exo_icon_vr.png",
+      "compressed": 170,
+      "uncompressed": 170,
+      "method": 0,
+      "local_offset": 232220712
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_answer.png",
+      "compressed": 270,
+      "uncompressed": 270,
+      "method": 0,
+      "local_offset": 232220950
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_answer_low.png",
+      "compressed": 270,
+      "uncompressed": 270,
+      "method": 0,
+      "local_offset": 232221290
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_answer_video.png",
+      "compressed": 199,
+      "uncompressed": 199,
+      "method": 0,
+      "local_offset": 232221634
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_answer_video_low.png",
+      "compressed": 199,
+      "uncompressed": 199,
+      "method": 0,
+      "local_offset": 232221911
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_decline.png",
+      "compressed": 201,
+      "uncompressed": 201,
+      "method": 0,
+      "local_offset": 232222191
+    },
+    {
+      "name": "res/drawable-ldpi-v4/ic_call_decline_low.png",
+      "compressed": 201,
+      "uncompressed": 201,
+      "method": 0,
+      "local_offset": 232222465
+    },
+    {
+      "name": "res/drawable-ldrtl-hdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 345,
+      "uncompressed": 345,
+      "method": 0,
+      "local_offset": 232222741
+    },
+    {
+      "name": "res/drawable-ldrtl-mdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 318,
+      "uncompressed": 318,
+      "method": 0,
+      "local_offset": 232223177
+    },
+    {
+      "name": "res/drawable-ldrtl-xhdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 417,
+      "uncompressed": 417,
+      "method": 0,
+      "local_offset": 232223586
+    },
+    {
+      "name": "res/drawable-ldrtl-xxhdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 525,
+      "uncompressed": 525,
+      "method": 0,
+      "local_offset": 232224093
+    },
+    {
+      "name": "res/drawable-ldrtl-xxxhdpi-v17/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 437,
+      "uncompressed": 437,
+      "method": 0,
+      "local_offset": 232224709
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_ab_share_pack_mtrl_alpha.9.png",
+      "compressed": 267,
+      "uncompressed": 267,
+      "method": 0,
+      "local_offset": 232225241
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_check_to_on_mtrl_000.png",
+      "compressed": 214,
+      "uncompressed": 214,
+      "method": 0,
+      "local_offset": 232225595
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_check_to_on_mtrl_015.png",
+      "compressed": 321,
+      "uncompressed": 321,
+      "method": 0,
+      "local_offset": 232225894
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_radio_to_on_mtrl_000.png",
+      "compressed": 324,
+      "uncompressed": 324,
+      "method": 0,
+      "local_offset": 232226301
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "compressed": 356,
+      "uncompressed": 356,
+      "method": 0,
+      "local_offset": 232226708
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "compressed": 754,
+      "uncompressed": 754,
+      "method": 0,
+      "local_offset": 232227148
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "compressed": 825,
+      "uncompressed": 825,
+      "method": 0,
+      "local_offset": 232227990
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_cab_background_top_mtrl_alpha.9.png",
+      "compressed": 216,
+      "uncompressed": 216,
+      "method": 0,
+      "local_offset": 232228905
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_ic_commit_search_api_mtrl_alpha.png",
+      "compressed": 173,
+      "uncompressed": 173,
+      "method": 0,
+      "local_offset": 232229212
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_divider_mtrl_alpha.9.png",
+      "compressed": 167,
+      "uncompressed": 167,
+      "method": 0,
+      "local_offset": 232229477
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_focused_holo.9.png",
+      "compressed": 222,
+      "uncompressed": 222,
+      "method": 0,
+      "local_offset": 232229731
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_longpressed_holo.9.png",
+      "compressed": 211,
+      "uncompressed": 211,
+      "method": 0,
+      "local_offset": 232230034
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_pressed_holo_dark.9.png",
+      "compressed": 207,
+      "uncompressed": 207,
+      "method": 0,
+      "local_offset": 232230327
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_pressed_holo_light.9.png",
+      "compressed": 207,
+      "uncompressed": 207,
+      "method": 0,
+      "local_offset": 232230619
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_selector_disabled_holo_dark.9.png",
+      "compressed": 217,
+      "uncompressed": 217,
+      "method": 0,
+      "local_offset": 232230911
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_list_selector_disabled_holo_light.9.png",
+      "compressed": 217,
+      "uncompressed": 217,
+      "method": 0,
+      "local_offset": 232231221
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_menu_hardkey_panel_mtrl_mult.9.png",
+      "compressed": 541,
+      "uncompressed": 541,
+      "method": 0,
+      "local_offset": 232231533
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "compressed": 776,
+      "uncompressed": 776,
+      "method": 0,
+      "local_offset": 232232165
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_scrubber_control_off_mtrl_alpha.png",
+      "compressed": 159,
+      "uncompressed": 159,
+      "method": 0,
+      "local_offset": 232233028
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_scrubber_control_to_pressed_mtrl_000.png",
+      "compressed": 145,
+      "uncompressed": 145,
+      "method": 0,
+      "local_offset": 232233279
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_scrubber_control_to_pressed_mtrl_005.png",
+      "compressed": 197,
+      "uncompressed": 197,
+      "method": 0,
+      "local_offset": 232233521
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_scrubber_primary_mtrl_alpha.9.png",
+      "compressed": 203,
+      "uncompressed": 203,
+      "method": 0,
+      "local_offset": 232233813
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_scrubber_track_mtrl_alpha.9.png",
+      "compressed": 194,
+      "uncompressed": 194,
+      "method": 0,
+      "local_offset": 232234107
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 327,
+      "uncompressed": 327,
+      "method": 0,
+      "local_offset": 232234390
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_switch_track_mtrl_alpha.9.png",
+      "compressed": 395,
+      "uncompressed": 395,
+      "method": 0,
+      "local_offset": 232234799
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_tab_indicator_mtrl_alpha.9.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232235279
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_text_select_handle_left_mtrl.png",
+      "compressed": 203,
+      "uncompressed": 203,
+      "method": 0,
+      "local_offset": 232235550
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_text_select_handle_middle_mtrl.png",
+      "compressed": 310,
+      "uncompressed": 310,
+      "method": 0,
+      "local_offset": 232235843
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_text_select_handle_right_mtrl.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232236242
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_textfield_activated_mtrl_alpha.9.png",
+      "compressed": 181,
+      "uncompressed": 181,
+      "method": 0,
+      "local_offset": 232236518
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_textfield_default_mtrl_alpha.9.png",
+      "compressed": 178,
+      "uncompressed": 178,
+      "method": 0,
+      "local_offset": 232236793
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_textfield_search_activated_mtrl_alpha.9.png",
+      "compressed": 178,
+      "uncompressed": 178,
+      "method": 0,
+      "local_offset": 232237062
+    },
+    {
+      "name": "res/drawable-mdpi-v4/abc_textfield_search_default_mtrl_alpha.9.png",
+      "compressed": 178,
+      "uncompressed": 178,
+      "method": 0,
+      "local_offset": 232237338
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_edit_mode_logo.png",
+      "compressed": 368,
+      "uncompressed": 368,
+      "method": 0,
+      "local_offset": 232237614
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_audiotrack.png",
+      "compressed": 206,
+      "uncompressed": 206,
+      "method": 0,
+      "local_offset": 232238056
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_check.png",
+      "compressed": 141,
+      "uncompressed": 141,
+      "method": 0,
+      "local_offset": 232238334
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_chevron_left.png",
+      "compressed": 113,
+      "uncompressed": 113,
+      "method": 0,
+      "local_offset": 232238545
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_chevron_right.png",
+      "compressed": 112,
+      "uncompressed": 112,
+      "method": 0,
+      "local_offset": 232238733
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_default_album_image.png",
+      "compressed": 855,
+      "uncompressed": 855,
+      "method": 0,
+      "local_offset": 232238920
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_forward.png",
+      "compressed": 228,
+      "uncompressed": 228,
+      "method": 0,
+      "local_offset": 232239859
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 98,
+      "uncompressed": 98,
+      "method": 0,
+      "local_offset": 232240156
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 96,
+      "uncompressed": 96,
+      "method": 0,
+      "local_offset": 232240334
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 282,
+      "uncompressed": 282,
+      "method": 0,
+      "local_offset": 232240508
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 294,
+      "uncompressed": 294,
+      "method": 0,
+      "local_offset": 232240874
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_rewind.png",
+      "compressed": 226,
+      "uncompressed": 226,
+      "method": 0,
+      "local_offset": 232241250
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_settings.png",
+      "compressed": 218,
+      "uncompressed": 218,
+      "method": 0,
+      "local_offset": 232241546
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_skip_next.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232241834
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_skip_previous.png",
+      "compressed": 188,
+      "uncompressed": 188,
+      "method": 0,
+      "local_offset": 232242094
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_speed.png",
+      "compressed": 269,
+      "uncompressed": 269,
+      "method": 0,
+      "local_offset": 232242360
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 157,
+      "uncompressed": 157,
+      "method": 0,
+      "local_offset": 232242697
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 145,
+      "uncompressed": 145,
+      "method": 0,
+      "local_offset": 232242929
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_circular_play.png",
+      "compressed": 672,
+      "uncompressed": 672,
+      "method": 0,
+      "local_offset": 232243149
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_fastforward.png",
+      "compressed": 217,
+      "uncompressed": 217,
+      "method": 0,
+      "local_offset": 232243900
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 101,
+      "uncompressed": 101,
+      "method": 0,
+      "local_offset": 232244193
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 101,
+      "uncompressed": 101,
+      "method": 0,
+      "local_offset": 232244377
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_next.png",
+      "compressed": 209,
+      "uncompressed": 209,
+      "method": 0,
+      "local_offset": 232244557
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_pause.png",
+      "compressed": 140,
+      "uncompressed": 140,
+      "method": 0,
+      "local_offset": 232244837
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_play.png",
+      "compressed": 200,
+      "uncompressed": 200,
+      "method": 0,
+      "local_offset": 232245048
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_previous.png",
+      "compressed": 180,
+      "uncompressed": 180,
+      "method": 0,
+      "local_offset": 232245316
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_repeat_all.png",
+      "compressed": 210,
+      "uncompressed": 210,
+      "method": 0,
+      "local_offset": 232245568
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_repeat_off.png",
+      "compressed": 227,
+      "uncompressed": 227,
+      "method": 0,
+      "local_offset": 232245854
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_repeat_one.png",
+      "compressed": 232,
+      "uncompressed": 232,
+      "method": 0,
+      "local_offset": 232246155
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_rewind.png",
+      "compressed": 217,
+      "uncompressed": 217,
+      "method": 0,
+      "local_offset": 232246464
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 228,
+      "uncompressed": 228,
+      "method": 0,
+      "local_offset": 232246753
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 230,
+      "uncompressed": 230,
+      "method": 0,
+      "local_offset": 232247056
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_stop.png",
+      "compressed": 97,
+      "uncompressed": 97,
+      "method": 0,
+      "local_offset": 232247362
+    },
+    {
+      "name": "res/drawable-mdpi-v4/exo_icon_vr.png",
+      "compressed": 207,
+      "uncompressed": 207,
+      "method": 0,
+      "local_offset": 232247529
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_answer.png",
+      "compressed": 317,
+      "uncompressed": 317,
+      "method": 0,
+      "local_offset": 232247803
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_answer_low.png",
+      "compressed": 317,
+      "uncompressed": 317,
+      "method": 0,
+      "local_offset": 232248189
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_answer_video.png",
+      "compressed": 206,
+      "uncompressed": 206,
+      "method": 0,
+      "local_offset": 232248581
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_answer_video_low.png",
+      "compressed": 206,
+      "uncompressed": 206,
+      "method": 0,
+      "local_offset": 232248862
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_decline.png",
+      "compressed": 264,
+      "uncompressed": 264,
+      "method": 0,
+      "local_offset": 232249150
+    },
+    {
+      "name": "res/drawable-mdpi-v4/ic_call_decline_low.png",
+      "compressed": 264,
+      "uncompressed": 264,
+      "method": 0,
+      "local_offset": 232249484
+    },
+    {
+      "name": "res/drawable-mdpi-v4/notification_bg_low_normal.9.png",
+      "compressed": 215,
+      "uncompressed": 215,
+      "method": 0,
+      "local_offset": 232249824
+    },
+    {
+      "name": "res/drawable-mdpi-v4/notification_bg_low_pressed.9.png",
+      "compressed": 223,
+      "uncompressed": 223,
+      "method": 0,
+      "local_offset": 232250123
+    },
+    {
+      "name": "res/drawable-mdpi-v4/notification_bg_normal.9.png",
+      "compressed": 215,
+      "uncompressed": 215,
+      "method": 0,
+      "local_offset": 232250431
+    },
+    {
+      "name": "res/drawable-mdpi-v4/notification_bg_normal_pressed.9.png",
+      "compressed": 223,
+      "uncompressed": 223,
+      "method": 0,
+      "local_offset": 232250727
+    },
+    {
+      "name": "res/drawable-mdpi-v4/notify_panel_notification_icon_bg.png",
+      "compressed": 98,
+      "uncompressed": 98,
+      "method": 0,
+      "local_offset": 232251039
+    },
+    {
+      "name": "res/drawable-v21/abc_action_bar_item_background_material.xml",
+      "compressed": 152,
+      "uncompressed": 264,
+      "method": 8,
+      "local_offset": 232251226
+    },
+    {
+      "name": "res/drawable-v21/abc_btn_colored_material.xml",
+      "compressed": 551,
+      "uncompressed": 1716,
+      "method": 8,
+      "local_offset": 232251468
+    },
+    {
+      "name": "res/drawable-v21/abc_dialog_material_background.xml",
+      "compressed": 324,
+      "uncompressed": 716,
+      "method": 8,
+      "local_offset": 232252094
+    },
+    {
+      "name": "res/drawable-v21/abc_edit_text_material.xml",
+      "compressed": 462,
+      "uncompressed": 1172,
+      "method": 8,
+      "local_offset": 232252499
+    },
+    {
+      "name": "res/drawable-v21/abc_list_divider_material.xml",
+      "compressed": 246,
+      "uncompressed": 516,
+      "method": 8,
+      "local_offset": 232253034
+    },
+    {
+      "name": "res/drawable-v21/notification_action_background.xml",
+      "compressed": 470,
+      "uncompressed": 1180,
+      "method": 8,
+      "local_offset": 232253356
+    },
+    {
+      "name": "res/drawable-v23/abc_control_background_material.xml",
+      "compressed": 174,
+      "uncompressed": 304,
+      "method": 8,
+      "local_offset": 232253907
+    },
+    {
+      "name": "res/drawable-watch-v20/abc_dialog_material_background.xml",
+      "compressed": 185,
+      "uncompressed": 372,
+      "method": 8,
+      "local_offset": 232254163
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_ab_share_pack_mtrl_alpha.9.png",
+      "compressed": 280,
+      "uncompressed": 280,
+      "method": 0,
+      "local_offset": 232254435
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_check_to_on_mtrl_000.png",
+      "compressed": 281,
+      "uncompressed": 281,
+      "method": 0,
+      "local_offset": 232254804
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_check_to_on_mtrl_015.png",
+      "compressed": 432,
+      "uncompressed": 432,
+      "method": 0,
+      "local_offset": 232255169
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_radio_to_on_mtrl_000.png",
+      "compressed": 651,
+      "uncompressed": 651,
+      "method": 0,
+      "local_offset": 232255688
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "compressed": 785,
+      "uncompressed": 785,
+      "method": 0,
+      "local_offset": 232256423
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "compressed": 1526,
+      "uncompressed": 1526,
+      "method": 0,
+      "local_offset": 232257293
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "compressed": 1731,
+      "uncompressed": 1731,
+      "method": 0,
+      "local_offset": 232258910
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_cab_background_top_mtrl_alpha.9.png",
+      "compressed": 229,
+      "uncompressed": 229,
+      "method": 0,
+      "local_offset": 232260731
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_ic_commit_search_api_mtrl_alpha.png",
+      "compressed": 228,
+      "uncompressed": 228,
+      "method": 0,
+      "local_offset": 232261053
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_divider_mtrl_alpha.9.png",
+      "compressed": 167,
+      "uncompressed": 167,
+      "method": 0,
+      "local_offset": 232261372
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_focused_holo.9.png",
+      "compressed": 244,
+      "uncompressed": 244,
+      "method": 0,
+      "local_offset": 232261627
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_longpressed_holo.9.png",
+      "compressed": 214,
+      "uncompressed": 214,
+      "method": 0,
+      "local_offset": 232261952
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_pressed_holo_dark.9.png",
+      "compressed": 209,
+      "uncompressed": 209,
+      "method": 0,
+      "local_offset": 232262250
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_pressed_holo_light.9.png",
+      "compressed": 209,
+      "uncompressed": 209,
+      "method": 0,
+      "local_offset": 232262545
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_selector_disabled_holo_dark.9.png",
+      "compressed": 236,
+      "uncompressed": 236,
+      "method": 0,
+      "local_offset": 232262841
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_list_selector_disabled_holo_light.9.png",
+      "compressed": 235,
+      "uncompressed": 235,
+      "method": 0,
+      "local_offset": 232263172
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_menu_hardkey_panel_mtrl_mult.9.png",
+      "compressed": 966,
+      "uncompressed": 966,
+      "method": 0,
+      "local_offset": 232263503
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "compressed": 1544,
+      "uncompressed": 1544,
+      "method": 0,
+      "local_offset": 232264562
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_scrubber_control_off_mtrl_alpha.png",
+      "compressed": 267,
+      "uncompressed": 267,
+      "method": 0,
+      "local_offset": 232266196
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_scrubber_control_to_pressed_mtrl_000.png",
+      "compressed": 267,
+      "uncompressed": 267,
+      "method": 0,
+      "local_offset": 232266555
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_scrubber_control_to_pressed_mtrl_005.png",
+      "compressed": 391,
+      "uncompressed": 391,
+      "method": 0,
+      "local_offset": 232266919
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_scrubber_primary_mtrl_alpha.9.png",
+      "compressed": 208,
+      "uncompressed": 208,
+      "method": 0,
+      "local_offset": 232267407
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_scrubber_track_mtrl_alpha.9.png",
+      "compressed": 198,
+      "uncompressed": 198,
+      "method": 0,
+      "local_offset": 232267704
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 448,
+      "uncompressed": 448,
+      "method": 0,
+      "local_offset": 232267990
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_switch_track_mtrl_alpha.9.png",
+      "compressed": 618,
+      "uncompressed": 618,
+      "method": 0,
+      "local_offset": 232268524
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_tab_indicator_mtrl_alpha.9.png",
+      "compressed": 194,
+      "uncompressed": 194,
+      "method": 0,
+      "local_offset": 232269230
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_text_select_handle_left_mtrl.png",
+      "compressed": 335,
+      "uncompressed": 335,
+      "method": 0,
+      "local_offset": 232269510
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_text_select_handle_middle_mtrl.png",
+      "compressed": 585,
+      "uncompressed": 585,
+      "method": 0,
+      "local_offset": 232269935
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_text_select_handle_right_mtrl.png",
+      "compressed": 318,
+      "uncompressed": 318,
+      "method": 0,
+      "local_offset": 232270613
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_textfield_activated_mtrl_alpha.9.png",
+      "compressed": 189,
+      "uncompressed": 189,
+      "method": 0,
+      "local_offset": 232271022
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_textfield_default_mtrl_alpha.9.png",
+      "compressed": 187,
+      "uncompressed": 187,
+      "method": 0,
+      "local_offset": 232271305
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_textfield_search_activated_mtrl_alpha.9.png",
+      "compressed": 184,
+      "uncompressed": 184,
+      "method": 0,
+      "local_offset": 232271583
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/abc_textfield_search_default_mtrl_alpha.9.png",
+      "compressed": 182,
+      "uncompressed": 182,
+      "method": 0,
+      "local_offset": 232271868
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_edit_mode_logo.png",
+      "compressed": 658,
+      "uncompressed": 658,
+      "method": 0,
+      "local_offset": 232272150
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_audiotrack.png",
+      "compressed": 346,
+      "uncompressed": 346,
+      "method": 0,
+      "local_offset": 232272882
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_check.png",
+      "compressed": 192,
+      "uncompressed": 192,
+      "method": 0,
+      "local_offset": 232273302
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_chevron_left.png",
+      "compressed": 153,
+      "uncompressed": 153,
+      "method": 0,
+      "local_offset": 232273564
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_chevron_right.png",
+      "compressed": 153,
+      "uncompressed": 153,
+      "method": 0,
+      "local_offset": 232273793
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_default_album_image.png",
+      "compressed": 1892,
+      "uncompressed": 1892,
+      "method": 0,
+      "local_offset": 232274025
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_forward.png",
+      "compressed": 361,
+      "uncompressed": 361,
+      "method": 0,
+      "local_offset": 232276000
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 101,
+      "uncompressed": 101,
+      "method": 0,
+      "local_offset": 232276433
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 101,
+      "uncompressed": 101,
+      "method": 0,
+      "local_offset": 232276613
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 478,
+      "uncompressed": 478,
+      "method": 0,
+      "local_offset": 232276793
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 509,
+      "uncompressed": 509,
+      "method": 0,
+      "local_offset": 232277354
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_rewind.png",
+      "compressed": 360,
+      "uncompressed": 360,
+      "method": 0,
+      "local_offset": 232277945
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_settings.png",
+      "compressed": 386,
+      "uncompressed": 386,
+      "method": 0,
+      "local_offset": 232278376
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_skip_next.png",
+      "compressed": 265,
+      "uncompressed": 265,
+      "method": 0,
+      "local_offset": 232278834
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_skip_previous.png",
+      "compressed": 273,
+      "uncompressed": 273,
+      "method": 0,
+      "local_offset": 232279173
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_speed.png",
+      "compressed": 501,
+      "uncompressed": 501,
+      "method": 0,
+      "local_offset": 232279525
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 214,
+      "uncompressed": 214,
+      "method": 0,
+      "local_offset": 232280097
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 202,
+      "uncompressed": 202,
+      "method": 0,
+      "local_offset": 232280386
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_circular_play.png",
+      "compressed": 1322,
+      "uncompressed": 1322,
+      "method": 0,
+      "local_offset": 232280662
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_fastforward.png",
+      "compressed": 386,
+      "uncompressed": 386,
+      "method": 0,
+      "local_offset": 232282062
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 109,
+      "uncompressed": 109,
+      "method": 0,
+      "local_offset": 232282526
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 106,
+      "uncompressed": 106,
+      "method": 0,
+      "local_offset": 232282717
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_next.png",
+      "compressed": 269,
+      "uncompressed": 269,
+      "method": 0,
+      "local_offset": 232282906
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_pause.png",
+      "compressed": 164,
+      "uncompressed": 164,
+      "method": 0,
+      "local_offset": 232283245
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_play.png",
+      "compressed": 270,
+      "uncompressed": 270,
+      "method": 0,
+      "local_offset": 232283480
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_previous.png",
+      "compressed": 328,
+      "uncompressed": 328,
+      "method": 0,
+      "local_offset": 232283822
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_repeat_all.png",
+      "compressed": 288,
+      "uncompressed": 288,
+      "method": 0,
+      "local_offset": 232284224
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_repeat_off.png",
+      "compressed": 322,
+      "uncompressed": 322,
+      "method": 0,
+      "local_offset": 232284588
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_repeat_one.png",
+      "compressed": 331,
+      "uncompressed": 331,
+      "method": 0,
+      "local_offset": 232284986
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_rewind.png",
+      "compressed": 391,
+      "uncompressed": 391,
+      "method": 0,
+      "local_offset": 232285395
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 342,
+      "uncompressed": 342,
+      "method": 0,
+      "local_offset": 232285859
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 342,
+      "uncompressed": 342,
+      "method": 0,
+      "local_offset": 232286278
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_stop.png",
+      "compressed": 91,
+      "uncompressed": 91,
+      "method": 0,
+      "local_offset": 232286698
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/exo_icon_vr.png",
+      "compressed": 375,
+      "uncompressed": 375,
+      "method": 0,
+      "local_offset": 232286859
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_answer.png",
+      "compressed": 623,
+      "uncompressed": 623,
+      "method": 0,
+      "local_offset": 232287303
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_answer_low.png",
+      "compressed": 623,
+      "uncompressed": 623,
+      "method": 0,
+      "local_offset": 232287999
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_answer_video.png",
+      "compressed": 290,
+      "uncompressed": 290,
+      "method": 0,
+      "local_offset": 232288699
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_answer_video_low.png",
+      "compressed": 290,
+      "uncompressed": 290,
+      "method": 0,
+      "local_offset": 232289066
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_decline.png",
+      "compressed": 452,
+      "uncompressed": 452,
+      "method": 0,
+      "local_offset": 232289438
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/ic_call_decline_low.png",
+      "compressed": 452,
+      "uncompressed": 452,
+      "method": 0,
+      "local_offset": 232289964
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/notification_bg_low_normal.9.png",
+      "compressed": 221,
+      "uncompressed": 221,
+      "method": 0,
+      "local_offset": 232290492
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/notification_bg_low_pressed.9.png",
+      "compressed": 252,
+      "uncompressed": 252,
+      "method": 0,
+      "local_offset": 232290797
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/notification_bg_normal.9.png",
+      "compressed": 221,
+      "uncompressed": 221,
+      "method": 0,
+      "local_offset": 232291136
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/notification_bg_normal_pressed.9.png",
+      "compressed": 247,
+      "uncompressed": 247,
+      "method": 0,
+      "local_offset": 232291437
+    },
+    {
+      "name": "res/drawable-xhdpi-v4/notify_panel_notification_icon_bg.png",
+      "compressed": 138,
+      "uncompressed": 138,
+      "method": 0,
+      "local_offset": 232291775
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_ab_share_pack_mtrl_alpha.9.png",
+      "compressed": 286,
+      "uncompressed": 286,
+      "method": 0,
+      "local_offset": 232292002
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_check_to_on_mtrl_000.png",
+      "compressed": 307,
+      "uncompressed": 307,
+      "method": 0,
+      "local_offset": 232292378
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_check_to_on_mtrl_015.png",
+      "compressed": 593,
+      "uncompressed": 593,
+      "method": 0,
+      "local_offset": 232292771
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_radio_to_on_mtrl_000.png",
+      "compressed": 984,
+      "uncompressed": 984,
+      "method": 0,
+      "local_offset": 232293449
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "compressed": 1208,
+      "uncompressed": 1208,
+      "method": 0,
+      "local_offset": 232294520
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "compressed": 2463,
+      "uncompressed": 2463,
+      "method": 0,
+      "local_offset": 232295816
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "compressed": 2834,
+      "uncompressed": 2834,
+      "method": 0,
+      "local_offset": 232298371
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_cab_background_top_mtrl_alpha.9.png",
+      "compressed": 237,
+      "uncompressed": 237,
+      "method": 0,
+      "local_offset": 232301298
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_ic_commit_search_api_mtrl_alpha.png",
+      "compressed": 224,
+      "uncompressed": 224,
+      "method": 0,
+      "local_offset": 232301629
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_divider_mtrl_alpha.9.png",
+      "compressed": 171,
+      "uncompressed": 171,
+      "method": 0,
+      "local_offset": 232301948
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_focused_holo.9.png",
+      "compressed": 245,
+      "uncompressed": 245,
+      "method": 0,
+      "local_offset": 232302207
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_longpressed_holo.9.png",
+      "compressed": 221,
+      "uncompressed": 221,
+      "method": 0,
+      "local_offset": 232302533
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_pressed_holo_dark.9.png",
+      "compressed": 212,
+      "uncompressed": 212,
+      "method": 0,
+      "local_offset": 232302841
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_pressed_holo_light.9.png",
+      "compressed": 212,
+      "uncompressed": 212,
+      "method": 0,
+      "local_offset": 232303140
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_selector_disabled_holo_dark.9.png",
+      "compressed": 260,
+      "uncompressed": 260,
+      "method": 0,
+      "local_offset": 232303440
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_list_selector_disabled_holo_light.9.png",
+      "compressed": 258,
+      "uncompressed": 258,
+      "method": 0,
+      "local_offset": 232303796
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_menu_hardkey_panel_mtrl_mult.9.png",
+      "compressed": 1779,
+      "uncompressed": 1779,
+      "method": 0,
+      "local_offset": 232304150
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_popup_background_mtrl_mult.9.png",
+      "compressed": 2305,
+      "uncompressed": 2305,
+      "method": 0,
+      "local_offset": 232306023
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_scrubber_control_off_mtrl_alpha.png",
+      "compressed": 322,
+      "uncompressed": 322,
+      "method": 0,
+      "local_offset": 232308417
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_scrubber_control_to_pressed_mtrl_000.png",
+      "compressed": 403,
+      "uncompressed": 403,
+      "method": 0,
+      "local_offset": 232308834
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_scrubber_control_to_pressed_mtrl_005.png",
+      "compressed": 595,
+      "uncompressed": 595,
+      "method": 0,
+      "local_offset": 232309335
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_scrubber_primary_mtrl_alpha.9.png",
+      "compressed": 210,
+      "uncompressed": 210,
+      "method": 0,
+      "local_offset": 232310027
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_scrubber_track_mtrl_alpha.9.png",
+      "compressed": 207,
+      "uncompressed": 207,
+      "method": 0,
+      "local_offset": 232310330
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 524,
+      "uncompressed": 524,
+      "method": 0,
+      "local_offset": 232310627
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_switch_track_mtrl_alpha.9.png",
+      "compressed": 851,
+      "uncompressed": 851,
+      "method": 0,
+      "local_offset": 232311236
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_tab_indicator_mtrl_alpha.9.png",
+      "compressed": 204,
+      "uncompressed": 204,
+      "method": 0,
+      "local_offset": 232312175
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_text_select_handle_left_mtrl.png",
+      "compressed": 420,
+      "uncompressed": 420,
+      "method": 0,
+      "local_offset": 232312468
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_text_select_handle_middle_mtrl.png",
+      "compressed": 753,
+      "uncompressed": 753,
+      "method": 0,
+      "local_offset": 232312980
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_text_select_handle_right_mtrl.png",
+      "compressed": 422,
+      "uncompressed": 422,
+      "method": 0,
+      "local_offset": 232313825
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_textfield_activated_mtrl_alpha.9.png",
+      "compressed": 199,
+      "uncompressed": 199,
+      "method": 0,
+      "local_offset": 232314338
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_textfield_default_mtrl_alpha.9.png",
+      "compressed": 200,
+      "uncompressed": 200,
+      "method": 0,
+      "local_offset": 232314631
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_textfield_search_activated_mtrl_alpha.9.png",
+      "compressed": 187,
+      "uncompressed": 187,
+      "method": 0,
+      "local_offset": 232314924
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/abc_textfield_search_default_mtrl_alpha.9.png",
+      "compressed": 186,
+      "uncompressed": 186,
+      "method": 0,
+      "local_offset": 232315211
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_edit_mode_logo.png",
+      "compressed": 998,
+      "uncompressed": 998,
+      "method": 0,
+      "local_offset": 232315498
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_audiotrack.png",
+      "compressed": 513,
+      "uncompressed": 513,
+      "method": 0,
+      "local_offset": 232316574
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_check.png",
+      "compressed": 236,
+      "uncompressed": 236,
+      "method": 0,
+      "local_offset": 232317161
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_chevron_left.png",
+      "compressed": 191,
+      "uncompressed": 191,
+      "method": 0,
+      "local_offset": 232317468
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_chevron_right.png",
+      "compressed": 191,
+      "uncompressed": 191,
+      "method": 0,
+      "local_offset": 232317735
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_default_album_image.png",
+      "compressed": 3131,
+      "uncompressed": 3131,
+      "method": 0,
+      "local_offset": 232318003
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_forward.png",
+      "compressed": 526,
+      "uncompressed": 526,
+      "method": 0,
+      "local_offset": 232321219
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 107,
+      "uncompressed": 107,
+      "method": 0,
+      "local_offset": 232321818
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 105,
+      "uncompressed": 105,
+      "method": 0,
+      "local_offset": 232322007
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 648,
+      "uncompressed": 648,
+      "method": 0,
+      "local_offset": 232322193
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 712,
+      "uncompressed": 712,
+      "method": 0,
+      "local_offset": 232322924
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_rewind.png",
+      "compressed": 527,
+      "uncompressed": 527,
+      "method": 0,
+      "local_offset": 232323720
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_settings.png",
+      "compressed": 574,
+      "uncompressed": 574,
+      "method": 0,
+      "local_offset": 232324319
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_skip_next.png",
+      "compressed": 336,
+      "uncompressed": 336,
+      "method": 0,
+      "local_offset": 232324966
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_skip_previous.png",
+      "compressed": 345,
+      "uncompressed": 345,
+      "method": 0,
+      "local_offset": 232325376
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_speed.png",
+      "compressed": 727,
+      "uncompressed": 727,
+      "method": 0,
+      "local_offset": 232325801
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 281,
+      "uncompressed": 281,
+      "method": 0,
+      "local_offset": 232326599
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 265,
+      "uncompressed": 265,
+      "method": 0,
+      "local_offset": 232326957
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_circular_play.png",
+      "compressed": 2020,
+      "uncompressed": 2020,
+      "method": 0,
+      "local_offset": 232327297
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_fastforward.png",
+      "compressed": 575,
+      "uncompressed": 575,
+      "method": 0,
+      "local_offset": 232329396
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 123,
+      "uncompressed": 123,
+      "method": 0,
+      "local_offset": 232330051
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 123,
+      "uncompressed": 123,
+      "method": 0,
+      "local_offset": 232330259
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_next.png",
+      "compressed": 385,
+      "uncompressed": 385,
+      "method": 0,
+      "local_offset": 232330463
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_pause.png",
+      "compressed": 111,
+      "uncompressed": 111,
+      "method": 0,
+      "local_offset": 232330921
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_play.png",
+      "compressed": 378,
+      "uncompressed": 378,
+      "method": 0,
+      "local_offset": 232331103
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_previous.png",
+      "compressed": 458,
+      "uncompressed": 458,
+      "method": 0,
+      "local_offset": 232331554
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_repeat_all.png",
+      "compressed": 266,
+      "uncompressed": 266,
+      "method": 0,
+      "local_offset": 232332086
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_repeat_off.png",
+      "compressed": 309,
+      "uncompressed": 309,
+      "method": 0,
+      "local_offset": 232332430
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_repeat_one.png",
+      "compressed": 309,
+      "uncompressed": 309,
+      "method": 0,
+      "local_offset": 232332817
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_rewind.png",
+      "compressed": 561,
+      "uncompressed": 561,
+      "method": 0,
+      "local_offset": 232333205
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 438,
+      "uncompressed": 438,
+      "method": 0,
+      "local_offset": 232333841
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 436,
+      "uncompressed": 436,
+      "method": 0,
+      "local_offset": 232334358
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_stop.png",
+      "compressed": 95,
+      "uncompressed": 95,
+      "method": 0,
+      "local_offset": 232334872
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/exo_icon_vr.png",
+      "compressed": 602,
+      "uncompressed": 602,
+      "method": 0,
+      "local_offset": 232335039
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_answer.png",
+      "compressed": 884,
+      "uncompressed": 884,
+      "method": 0,
+      "local_offset": 232335710
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_answer_low.png",
+      "compressed": 884,
+      "uncompressed": 884,
+      "method": 0,
+      "local_offset": 232336668
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_answer_video.png",
+      "compressed": 384,
+      "uncompressed": 384,
+      "method": 0,
+      "local_offset": 232337628
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_answer_video_low.png",
+      "compressed": 384,
+      "uncompressed": 384,
+      "method": 0,
+      "local_offset": 232338092
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_decline.png",
+      "compressed": 628,
+      "uncompressed": 628,
+      "method": 0,
+      "local_offset": 232338560
+    },
+    {
+      "name": "res/drawable-xxhdpi-v4/ic_call_decline_low.png",
+      "compressed": 628,
+      "uncompressed": 628,
+      "method": 0,
+      "local_offset": 232339260
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_check_to_on_mtrl_000.png",
+      "compressed": 275,
+      "uncompressed": 275,
+      "method": 0,
+      "local_offset": 232339964
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_check_to_on_mtrl_015.png",
+      "compressed": 476,
+      "uncompressed": 476,
+      "method": 0,
+      "local_offset": 232340327
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_radio_to_on_mtrl_000.png",
+      "compressed": 785,
+      "uncompressed": 785,
+      "method": 0,
+      "local_offset": 232340892
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_radio_to_on_mtrl_015.png",
+      "compressed": 946,
+      "uncompressed": 946,
+      "method": 0,
+      "local_offset": 232341765
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00001.9.png",
+      "compressed": 2505,
+      "uncompressed": 2505,
+      "method": 0,
+      "local_offset": 232342798
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_btn_switch_to_on_mtrl_00012.9.png",
+      "compressed": 2816,
+      "uncompressed": 2816,
+      "method": 0,
+      "local_offset": 232345397
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_scrubber_control_to_pressed_mtrl_000.png",
+      "compressed": 415,
+      "uncompressed": 415,
+      "method": 0,
+      "local_offset": 232348304
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_scrubber_control_to_pressed_mtrl_005.png",
+      "compressed": 631,
+      "uncompressed": 631,
+      "method": 0,
+      "local_offset": 232348819
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_spinner_mtrl_am_alpha.9.png",
+      "compressed": 430,
+      "uncompressed": 430,
+      "method": 0,
+      "local_offset": 232349551
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_switch_track_mtrl_alpha.9.png",
+      "compressed": 813,
+      "uncompressed": 813,
+      "method": 0,
+      "local_offset": 232350066
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_tab_indicator_mtrl_alpha.9.png",
+      "compressed": 202,
+      "uncompressed": 202,
+      "method": 0,
+      "local_offset": 232350969
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_text_select_handle_left_mtrl.png",
+      "compressed": 513,
+      "uncompressed": 513,
+      "method": 0,
+      "local_offset": 232351262
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/abc_text_select_handle_right_mtrl.png",
+      "compressed": 513,
+      "uncompressed": 513,
+      "method": 0,
+      "local_offset": 232351865
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_edit_mode_logo.png",
+      "compressed": 1397,
+      "uncompressed": 1397,
+      "method": 0,
+      "local_offset": 232352469
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_audiotrack.png",
+      "compressed": 650,
+      "uncompressed": 650,
+      "method": 0,
+      "local_offset": 232353945
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_check.png",
+      "compressed": 277,
+      "uncompressed": 277,
+      "method": 0,
+      "local_offset": 232354670
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_chevron_left.png",
+      "compressed": 238,
+      "uncompressed": 238,
+      "method": 0,
+      "local_offset": 232355017
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_chevron_right.png",
+      "compressed": 237,
+      "uncompressed": 237,
+      "method": 0,
+      "local_offset": 232355334
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_default_album_image.png",
+      "compressed": 4781,
+      "uncompressed": 4781,
+      "method": 0,
+      "local_offset": 232355649
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_forward.png",
+      "compressed": 670,
+      "uncompressed": 670,
+      "method": 0,
+      "local_offset": 232360517
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_fullscreen_enter.png",
+      "compressed": 109,
+      "uncompressed": 109,
+      "method": 0,
+      "local_offset": 232361262
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_fullscreen_exit.png",
+      "compressed": 106,
+      "uncompressed": 106,
+      "method": 0,
+      "local_offset": 232361453
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_pause_circle_filled.png",
+      "compressed": 1081,
+      "uncompressed": 1081,
+      "method": 0,
+      "local_offset": 232361642
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_play_circle_filled.png",
+      "compressed": 1152,
+      "uncompressed": 1152,
+      "method": 0,
+      "local_offset": 232362809
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_rewind.png",
+      "compressed": 673,
+      "uncompressed": 673,
+      "method": 0,
+      "local_offset": 232364044
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_settings.png",
+      "compressed": 752,
+      "uncompressed": 752,
+      "method": 0,
+      "local_offset": 232364789
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_skip_next.png",
+      "compressed": 428,
+      "uncompressed": 428,
+      "method": 0,
+      "local_offset": 232365616
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_skip_previous.png",
+      "compressed": 433,
+      "uncompressed": 433,
+      "method": 0,
+      "local_offset": 232366120
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_speed.png",
+      "compressed": 955,
+      "uncompressed": 955,
+      "method": 0,
+      "local_offset": 232366633
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_subtitle_off.png",
+      "compressed": 316,
+      "uncompressed": 316,
+      "method": 0,
+      "local_offset": 232367659
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_ic_subtitle_on.png",
+      "compressed": 305,
+      "uncompressed": 305,
+      "method": 0,
+      "local_offset": 232368052
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_circular_play.png",
+      "compressed": 2683,
+      "uncompressed": 2683,
+      "method": 0,
+      "local_offset": 232368433
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_fastforward.png",
+      "compressed": 592,
+      "uncompressed": 592,
+      "method": 0,
+      "local_offset": 232371199
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_fullscreen_enter.png",
+      "compressed": 219,
+      "uncompressed": 219,
+      "method": 0,
+      "local_offset": 232371872
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_fullscreen_exit.png",
+      "compressed": 227,
+      "uncompressed": 227,
+      "method": 0,
+      "local_offset": 232372175
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_next.png",
+      "compressed": 502,
+      "uncompressed": 502,
+      "method": 0,
+      "local_offset": 232372487
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_pause.png",
+      "compressed": 218,
+      "uncompressed": 218,
+      "method": 0,
+      "local_offset": 232373062
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_play.png",
+      "compressed": 495,
+      "uncompressed": 495,
+      "method": 0,
+      "local_offset": 232373354
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_previous.png",
+      "compressed": 513,
+      "uncompressed": 513,
+      "method": 0,
+      "local_offset": 232373923
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_repeat_all.png",
+      "compressed": 529,
+      "uncompressed": 529,
+      "method": 0,
+      "local_offset": 232374513
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_repeat_off.png",
+      "compressed": 529,
+      "uncompressed": 529,
+      "method": 0,
+      "local_offset": 232375121
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_repeat_one.png",
+      "compressed": 595,
+      "uncompressed": 595,
+      "method": 0,
+      "local_offset": 232375729
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_rewind.png",
+      "compressed": 627,
+      "uncompressed": 627,
+      "method": 0,
+      "local_offset": 232376403
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_shuffle_off.png",
+      "compressed": 802,
+      "uncompressed": 802,
+      "method": 0,
+      "local_offset": 232377103
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_shuffle_on.png",
+      "compressed": 911,
+      "uncompressed": 911,
+      "method": 0,
+      "local_offset": 232377986
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/exo_icon_stop.png",
+      "compressed": 144,
+      "uncompressed": 144,
+      "method": 0,
+      "local_offset": 232378975
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_answer.png",
+      "compressed": 1171,
+      "uncompressed": 1171,
+      "method": 0,
+      "local_offset": 232379192
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_answer_low.png",
+      "compressed": 1171,
+      "uncompressed": 1171,
+      "method": 0,
+      "local_offset": 232380435
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_answer_video.png",
+      "compressed": 465,
+      "uncompressed": 465,
+      "method": 0,
+      "local_offset": 232381683
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_answer_video_low.png",
+      "compressed": 465,
+      "uncompressed": 465,
+      "method": 0,
+      "local_offset": 232382229
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_decline.png",
+      "compressed": 823,
+      "uncompressed": 823,
+      "method": 0,
+      "local_offset": 232382777
+    },
+    {
+      "name": "res/drawable-xxxhdpi-v4/ic_call_decline_low.png",
+      "compressed": 823,
+      "uncompressed": 823,
+      "method": 0,
+      "local_offset": 232383675
+    },
+    {
+      "name": "res/drawable/abc_btn_borderless_material.xml",
+      "compressed": 252,
+      "uncompressed": 588,
+      "method": 8,
+      "local_offset": 232384575
+    },
+    {
+      "name": "res/drawable/abc_btn_check_material.xml",
+      "compressed": 230,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232384901
+    },
+    {
+      "name": "res/drawable/abc_btn_check_material_anim.xml",
+      "compressed": 341,
+      "uncompressed": 816,
+      "method": 8,
+      "local_offset": 232385200
+    },
+    {
+      "name": "res/drawable/abc_btn_default_mtrl_shape.xml",
+      "compressed": 394,
+      "uncompressed": 932,
+      "method": 8,
+      "local_offset": 232385615
+    },
+    {
+      "name": "res/drawable/abc_btn_radio_material.xml",
+      "compressed": 230,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232386082
+    },
+    {
+      "name": "res/drawable/abc_btn_radio_material_anim.xml",
+      "compressed": 343,
+      "uncompressed": 816,
+      "method": 8,
+      "local_offset": 232386381
+    },
+    {
+      "name": "res/drawable/abc_cab_background_internal_bg.xml",
+      "compressed": 185,
+      "uncompressed": 372,
+      "method": 8,
+      "local_offset": 232386798
+    },
+    {
+      "name": "res/drawable/abc_cab_background_top_material.xml",
+      "compressed": 174,
+      "uncompressed": 336,
+      "method": 8,
+      "local_offset": 232387060
+    },
+    {
+      "name": "res/drawable/abc_ic_ab_back_material.xml",
+      "compressed": 381,
+      "uncompressed": 692,
+      "method": 8,
+      "local_offset": 232387312
+    },
+    {
+      "name": "res/drawable/abc_ic_arrow_drop_right_black_24dp.xml",
+      "compressed": 492,
+      "uncompressed": 1000,
+      "method": 8,
+      "local_offset": 232387763
+    },
+    {
+      "name": "res/drawable/abc_ic_clear_material.xml",
+      "compressed": 360,
+      "uncompressed": 684,
+      "method": 8,
+      "local_offset": 232388336
+    },
+    {
+      "name": "res/drawable/abc_ic_go_search_api_material.xml",
+      "compressed": 339,
+      "uncompressed": 640,
+      "method": 8,
+      "local_offset": 232388764
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_copy_mtrl_am_alpha.xml",
+      "compressed": 405,
+      "uncompressed": 756,
+      "method": 8,
+      "local_offset": 232389179
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_cut_mtrl_alpha.xml",
+      "compressed": 554,
+      "uncompressed": 1096,
+      "method": 8,
+      "local_offset": 232389661
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_overflow_material.xml",
+      "compressed": 388,
+      "uncompressed": 792,
+      "method": 8,
+      "local_offset": 232390288
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_paste_mtrl_am_alpha.xml",
+      "compressed": 435,
+      "uncompressed": 796,
+      "method": 8,
+      "local_offset": 232390752
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_selectall_mtrl_alpha.xml",
+      "compressed": 471,
+      "uncompressed": 920,
+      "method": 8,
+      "local_offset": 232391265
+    },
+    {
+      "name": "res/drawable/abc_ic_menu_share_mtrl_alpha.xml",
+      "compressed": 514,
+      "uncompressed": 980,
+      "method": 8,
+      "local_offset": 232391815
+    },
+    {
+      "name": "res/drawable/abc_ic_search_api_material.xml",
+      "compressed": 452,
+      "uncompressed": 812,
+      "method": 8,
+      "local_offset": 232392404
+    },
+    {
+      "name": "res/drawable/abc_ic_voice_search_api_material.xml",
+      "compressed": 456,
+      "uncompressed": 828,
+      "method": 8,
+      "local_offset": 232392929
+    },
+    {
+      "name": "res/drawable/abc_item_background_holo_dark.xml",
+      "compressed": 319,
+      "uncompressed": 1012,
+      "method": 8,
+      "local_offset": 232393464
+    },
+    {
+      "name": "res/drawable/abc_item_background_holo_light.xml",
+      "compressed": 319,
+      "uncompressed": 1012,
+      "method": 8,
+      "local_offset": 232393859
+    },
+    {
+      "name": "res/drawable/abc_list_selector_background_transition_holo_dark.xml",
+      "compressed": 199,
+      "uncompressed": 424,
+      "method": 8,
+      "local_offset": 232394255
+    },
+    {
+      "name": "res/drawable/abc_list_selector_background_transition_holo_light.xml",
+      "compressed": 199,
+      "uncompressed": 424,
+      "method": 8,
+      "local_offset": 232394550
+    },
+    {
+      "name": "res/drawable/abc_list_selector_holo_dark.xml",
+      "compressed": 338,
+      "uncompressed": 1064,
+      "method": 8,
+      "local_offset": 232394846
+    },
+    {
+      "name": "res/drawable/abc_list_selector_holo_light.xml",
+      "compressed": 338,
+      "uncompressed": 1064,
+      "method": 8,
+      "local_offset": 232395258
+    },
+    {
+      "name": "res/drawable/abc_ratingbar_indicator_material.xml",
+      "compressed": 68,
+      "uncompressed": 124,
+      "method": 8,
+      "local_offset": 232395671
+    },
+    {
+      "name": "res/drawable/abc_ratingbar_material.xml",
+      "compressed": 68,
+      "uncompressed": 124,
+      "method": 8,
+      "local_offset": 232395818
+    },
+    {
+      "name": "res/drawable/abc_ratingbar_small_material.xml",
+      "compressed": 68,
+      "uncompressed": 124,
+      "method": 8,
+      "local_offset": 232395955
+    },
+    {
+      "name": "res/drawable/abc_seekbar_thumb_material.xml",
+      "compressed": 354,
+      "uncompressed": 1100,
+      "method": 8,
+      "local_offset": 232396098
+    },
+    {
+      "name": "res/drawable/abc_seekbar_tick_mark_material.xml",
+      "compressed": 244,
+      "uncompressed": 516,
+      "method": 8,
+      "local_offset": 232396525
+    },
+    {
+      "name": "res/drawable/abc_seekbar_track_material.xml",
+      "compressed": 423,
+      "uncompressed": 1408,
+      "method": 8,
+      "local_offset": 232396846
+    },
+    {
+      "name": "res/drawable/abc_spinner_textfield_background_material.xml",
+      "compressed": 409,
+      "uncompressed": 1160,
+      "method": 8,
+      "local_offset": 232397342
+    },
+    {
+      "name": "res/drawable/abc_star_black_48dp.xml",
+      "compressed": 361,
+      "uncompressed": 640,
+      "method": 8,
+      "local_offset": 232397839
+    },
+    {
+      "name": "res/drawable/abc_star_half_black_48dp.xml",
+      "compressed": 331,
+      "uncompressed": 600,
+      "method": 8,
+      "local_offset": 232398266
+    },
+    {
+      "name": "res/drawable/abc_switch_thumb_material.xml",
+      "compressed": 230,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232398668
+    },
+    {
+      "name": "res/drawable/abc_tab_indicator_material.xml",
+      "compressed": 232,
+      "uncompressed": 468,
+      "method": 8,
+      "local_offset": 232398970
+    },
+    {
+      "name": "res/drawable/abc_text_cursor_material.xml",
+      "compressed": 241,
+      "uncompressed": 516,
+      "method": 8,
+      "local_offset": 232399275
+    },
+    {
+      "name": "res/drawable/abc_textfield_search_material.xml",
+      "compressed": 291,
+      "uncompressed": 756,
+      "method": 8,
+      "local_offset": 232399587
+    },
+    {
+      "name": "res/drawable/abc_vector_test.xml",
+      "compressed": 333,
+      "uncompressed": 612,
+      "method": 8,
+      "local_offset": 232399954
+    },
+    {
+      "name": "res/drawable/btn_checkbox_checked_mtrl.xml",
+      "compressed": 841,
+      "uncompressed": 2688,
+      "method": 8,
+      "local_offset": 232400349
+    },
+    {
+      "name": "res/drawable/btn_checkbox_checked_to_unchecked_mtrl_animation.xml",
+      "compressed": 305,
+      "uncompressed": 688,
+      "method": 8,
+      "local_offset": 232401262
+    },
+    {
+      "name": "res/drawable/btn_checkbox_unchecked_mtrl.xml",
+      "compressed": 831,
+      "uncompressed": 2660,
+      "method": 8,
+      "local_offset": 232401662
+    },
+    {
+      "name": "res/drawable/btn_checkbox_unchecked_to_checked_mtrl_animation.xml",
+      "compressed": 302,
+      "uncompressed": 688,
+      "method": 8,
+      "local_offset": 232402567
+    },
+    {
+      "name": "res/drawable/btn_radio_off_mtrl.xml",
+      "compressed": 703,
+      "uncompressed": 1728,
+      "method": 8,
+      "local_offset": 232402964
+    },
+    {
+      "name": "res/drawable/btn_radio_off_to_on_mtrl_animation.xml",
+      "compressed": 301,
+      "uncompressed": 680,
+      "method": 8,
+      "local_offset": 232403732
+    },
+    {
+      "name": "res/drawable/btn_radio_on_mtrl.xml",
+      "compressed": 678,
+      "uncompressed": 1656,
+      "method": 8,
+      "local_offset": 232404114
+    },
+    {
+      "name": "res/drawable/btn_radio_on_to_off_mtrl_animation.xml",
+      "compressed": 301,
+      "uncompressed": 680,
+      "method": 8,
+      "local_offset": 232404856
+    },
+    {
+      "name": "res/drawable/exo_rounded_rectangle.xml",
+      "compressed": 221,
+      "uncompressed": 484,
+      "method": 8,
+      "local_offset": 232405238
+    },
+    {
+      "name": "res/drawable/ic_launcher_foreground.xml",
+      "compressed": 456,
+      "uncompressed": 908,
+      "method": 8,
+      "local_offset": 232405527
+    },
+    {
+      "name": "res/drawable/notification_bg.xml",
+      "compressed": 253,
+      "uncompressed": 532,
+      "method": 8,
+      "local_offset": 232406052
+    },
+    {
+      "name": "res/drawable/notification_bg_low.xml",
+      "compressed": 253,
+      "uncompressed": 532,
+      "method": 8,
+      "local_offset": 232406367
+    },
+    {
+      "name": "res/drawable/notification_icon_background.xml",
+      "compressed": 185,
+      "uncompressed": 372,
+      "method": 8,
+      "local_offset": 232406686
+    },
+    {
+      "name": "res/drawable/notification_tile_bg.xml",
+      "compressed": 174,
+      "uncompressed": 304,
+      "method": 8,
+      "local_offset": 232406946
+    },
+    {
+      "name": "res/drawable/qq_group_qr.png",
+      "compressed": 475696,
+      "uncompressed": 475696,
+      "method": 0,
+      "local_offset": 232407187
+    },
+    {
+      "name": "res/drawable/test_level_drawable.xml",
+      "compressed": 218,
+      "uncompressed": 448,
+      "method": 8,
+      "local_offset": 232882944
+    },
+    {
+      "name": "res/drawable/tooltip_frame_dark.xml",
+      "compressed": 222,
+      "uncompressed": 484,
+      "method": 8,
+      "local_offset": 232883228
+    },
+    {
+      "name": "res/drawable/tooltip_frame_light.xml",
+      "compressed": 222,
+      "uncompressed": 484,
+      "method": 8,
+      "local_offset": 232883515
+    },
+    {
+      "name": "res/font/roboto_medium_numbers.ttf",
+      "compressed": 2294,
+      "uncompressed": 3316,
+      "method": 8,
+      "local_offset": 232883803
+    },
+    {
+      "name": "res/interpolator/btn_checkbox_checked_mtrl_animation_interpolator_0.xml",
+      "compressed": 187,
+      "uncompressed": 316,
+      "method": 8,
+      "local_offset": 232886161
+    },
+    {
+      "name": "res/interpolator/btn_checkbox_checked_mtrl_animation_interpolator_1.xml",
+      "compressed": 190,
+      "uncompressed": 328,
+      "method": 8,
+      "local_offset": 232886449
+    },
+    {
+      "name": "res/interpolator/btn_checkbox_unchecked_mtrl_animation_interpolator_0.xml",
+      "compressed": 187,
+      "uncompressed": 316,
+      "method": 8,
+      "local_offset": 232886740
+    },
+    {
+      "name": "res/interpolator/btn_checkbox_unchecked_mtrl_animation_interpolator_1.xml",
+      "compressed": 190,
+      "uncompressed": 328,
+      "method": 8,
+      "local_offset": 232887030
+    },
+    {
+      "name": "res/interpolator/btn_radio_to_off_mtrl_animation_interpolator_0.xml",
+      "compressed": 190,
+      "uncompressed": 320,
+      "method": 8,
+      "local_offset": 232887323
+    },
+    {
+      "name": "res/interpolator/btn_radio_to_on_mtrl_animation_interpolator_0.xml",
+      "compressed": 190,
+      "uncompressed": 320,
+      "method": 8,
+      "local_offset": 232887610
+    },
+    {
+      "name": "res/interpolator/fast_out_slow_in.xml",
+      "compressed": 214,
+      "uncompressed": 400,
+      "method": 8,
+      "local_offset": 232887896
+    },
+    {
+      "name": "res/layout-v21/notification_action.xml",
+      "compressed": 486,
+      "uncompressed": 1052,
+      "method": 8,
+      "local_offset": 232888177
+    },
+    {
+      "name": "res/layout-v21/notification_action_tombstone.xml",
+      "compressed": 539,
+      "uncompressed": 1228,
+      "method": 8,
+      "local_offset": 232888731
+    },
+    {
+      "name": "res/layout-v21/notification_template_custom_big.xml",
+      "compressed": 794,
+      "uncompressed": 2456,
+      "method": 8,
+      "local_offset": 232889348
+    },
+    {
+      "name": "res/layout-v21/notification_template_icon_group.xml",
+      "compressed": 423,
+      "uncompressed": 988,
+      "method": 8,
+      "local_offset": 232890223
+    },
+    {
+      "name": "res/layout-v23/exo_player_control_ffwd_button.xml",
+      "compressed": 225,
+      "uncompressed": 408,
+      "method": 8,
+      "local_offset": 232890727
+    },
+    {
+      "name": "res/layout-v23/exo_player_control_rewind_button.xml",
+      "compressed": 225,
+      "uncompressed": 408,
+      "method": 8,
+      "local_offset": 232891031
+    },
+    {
+      "name": "res/layout-v26/abc_screen_toolbar.xml",
+      "compressed": 649,
+      "uncompressed": 1560,
+      "method": 8,
+      "local_offset": 232891337
+    },
+    {
+      "name": "res/layout-watch-v20/abc_alert_dialog_button_bar_material.xml",
+      "compressed": 468,
+      "uncompressed": 1208,
+      "method": 8,
+      "local_offset": 232892053
+    },
+    {
+      "name": "res/layout-watch-v20/abc_alert_dialog_title_material.xml",
+      "compressed": 549,
+      "uncompressed": 1352,
+      "method": 8,
+      "local_offset": 232892612
+    },
+    {
+      "name": "res/layout/abc_action_bar_title_item.xml",
+      "compressed": 387,
+      "uncompressed": 872,
+      "method": 8,
+      "local_offset": 232893247
+    },
+    {
+      "name": "res/layout/abc_action_bar_up_container.xml",
+      "compressed": 251,
+      "uncompressed": 440,
+      "method": 8,
+      "local_offset": 232893704
+    },
+    {
+      "name": "res/layout/abc_action_menu_item_layout.xml",
+      "compressed": 394,
+      "uncompressed": 768,
+      "method": 8,
+      "local_offset": 232894027
+    },
+    {
+      "name": "res/layout/abc_action_menu_layout.xml",
+      "compressed": 295,
+      "uncompressed": 576,
+      "method": 8,
+      "local_offset": 232894493
+    },
+    {
+      "name": "res/layout/abc_action_mode_bar.xml",
+      "compressed": 269,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232894855
+    },
+    {
+      "name": "res/layout/abc_action_mode_close_item_material.xml",
+      "compressed": 424,
+      "uncompressed": 840,
+      "method": 8,
+      "local_offset": 232895188
+    },
+    {
+      "name": "res/layout/abc_activity_chooser_view.xml",
+      "compressed": 596,
+      "uncompressed": 1684,
+      "method": 8,
+      "local_offset": 232895692
+    },
+    {
+      "name": "res/layout/abc_activity_chooser_view_list_item.xml",
+      "compressed": 569,
+      "uncompressed": 1304,
+      "method": 8,
+      "local_offset": 232896358
+    },
+    {
+      "name": "res/layout/abc_alert_dialog_button_bar_material.xml",
+      "compressed": 610,
+      "uncompressed": 1584,
+      "method": 8,
+      "local_offset": 232897007
+    },
+    {
+      "name": "res/layout/abc_alert_dialog_material.xml",
+      "compressed": 836,
+      "uncompressed": 2648,
+      "method": 8,
+      "local_offset": 232897698
+    },
+    {
+      "name": "res/layout/abc_alert_dialog_title_material.xml",
+      "compressed": 643,
+      "uncompressed": 1560,
+      "method": 8,
+      "local_offset": 232898604
+    },
+    {
+      "name": "res/layout/abc_cascading_menu_item_layout.xml",
+      "compressed": 714,
+      "uncompressed": 1868,
+      "method": 8,
+      "local_offset": 232899323
+    },
+    {
+      "name": "res/layout/abc_dialog_title_material.xml",
+      "compressed": 525,
+      "uncompressed": 1116,
+      "method": 8,
+      "local_offset": 232900112
+    },
+    {
+      "name": "res/layout/abc_expanded_menu_layout.xml",
+      "compressed": 233,
+      "uncompressed": 388,
+      "method": 8,
+      "local_offset": 232900707
+    },
+    {
+      "name": "res/layout/abc_list_menu_item_checkbox.xml",
+      "compressed": 284,
+      "uncompressed": 528,
+      "method": 8,
+      "local_offset": 232901009
+    },
+    {
+      "name": "res/layout/abc_list_menu_item_icon.xml",
+      "compressed": 382,
+      "uncompressed": 780,
+      "method": 8,
+      "local_offset": 232901365
+    },
+    {
+      "name": "res/layout/abc_list_menu_item_layout.xml",
+      "compressed": 597,
+      "uncompressed": 1396,
+      "method": 8,
+      "local_offset": 232901815
+    },
+    {
+      "name": "res/layout/abc_list_menu_item_radio.xml",
+      "compressed": 287,
+      "uncompressed": 532,
+      "method": 8,
+      "local_offset": 232902482
+    },
+    {
+      "name": "res/layout/abc_popup_menu_header_item_layout.xml",
+      "compressed": 433,
+      "uncompressed": 848,
+      "method": 8,
+      "local_offset": 232902838
+    },
+    {
+      "name": "res/layout/abc_popup_menu_item_layout.xml",
+      "compressed": 807,
+      "uncompressed": 2072,
+      "method": 8,
+      "local_offset": 232903349
+    },
+    {
+      "name": "res/layout/abc_screen_content_include.xml",
+      "compressed": 297,
+      "uncompressed": 548,
+      "method": 8,
+      "local_offset": 232904227
+    },
+    {
+      "name": "res/layout/abc_screen_simple.xml",
+      "compressed": 394,
+      "uncompressed": 832,
+      "method": 8,
+      "local_offset": 232904595
+    },
+    {
+      "name": "res/layout/abc_screen_simple_overlay_action_mode.xml",
+      "compressed": 376,
+      "uncompressed": 792,
+      "method": 8,
+      "local_offset": 232905051
+    },
+    {
+      "name": "res/layout/abc_search_dropdown_item_icons_2line.xml",
+      "compressed": 665,
+      "uncompressed": 1916,
+      "method": 8,
+      "local_offset": 232905509
+    },
+    {
+      "name": "res/layout/abc_search_view.xml",
+      "compressed": 1104,
+      "uncompressed": 3472,
+      "method": 8,
+      "local_offset": 232906255
+    },
+    {
+      "name": "res/layout/abc_select_dialog_material.xml",
+      "compressed": 536,
+      "uncompressed": 1020,
+      "method": 8,
+      "local_offset": 232907419
+    },
+    {
+      "name": "res/layout/abc_tooltip.xml",
+      "compressed": 501,
+      "uncompressed": 1056,
+      "method": 8,
+      "local_offset": 232908026
+    },
+    {
+      "name": "res/layout/custom_dialog.xml",
+      "compressed": 309,
+      "uncompressed": 612,
+      "method": 8,
+      "local_offset": 232908583
+    },
+    {
+      "name": "res/layout/exo_legacy_player_control_view.xml",
+      "compressed": 772,
+      "uncompressed": 2628,
+      "method": 8,
+      "local_offset": 232908950
+    },
+    {
+      "name": "res/layout/exo_list_divider.xml",
+      "compressed": 210,
+      "uncompressed": 356,
+      "method": 8,
+      "local_offset": 232909797
+    },
+    {
+      "name": "res/layout/exo_player_control_view.xml",
+      "compressed": 1069,
+      "uncompressed": 4056,
+      "method": 8,
+      "local_offset": 232910068
+    },
+    {
+      "name": "res/layout/exo_player_view.xml",
+      "compressed": 755,
+      "uncompressed": 2308,
+      "method": 8,
+      "local_offset": 232911205
+    },
+    {
+      "name": "res/layout/exo_styled_settings_list.xml",
+      "compressed": 264,
+      "uncompressed": 468,
+      "method": 8,
+      "local_offset": 232912020
+    },
+    {
+      "name": "res/layout/exo_styled_settings_list_item.xml",
+      "compressed": 609,
+      "uncompressed": 1584,
+      "method": 8,
+      "local_offset": 232912353
+    },
+    {
+      "name": "res/layout/exo_styled_sub_settings_list_item.xml",
+      "compressed": 577,
+      "uncompressed": 1280,
+      "method": 8,
+      "local_offset": 232913036
+    },
+    {
+      "name": "res/layout/exo_track_selection_dialog.xml",
+      "compressed": 261,
+      "uncompressed": 496,
+      "method": 8,
+      "local_offset": 232913691
+    },
+    {
+      "name": "res/layout/ime_base_split_test_activity.xml",
+      "compressed": 201,
+      "uncompressed": 364,
+      "method": 8,
+      "local_offset": 232914023
+    },
+    {
+      "name": "res/layout/ime_secondary_split_test_activity.xml",
+      "compressed": 417,
+      "uncompressed": 876,
+      "method": 8,
+      "local_offset": 232914297
+    },
+    {
+      "name": "res/layout/notification_media_action.xml",
+      "compressed": 304,
+      "uncompressed": 564,
+      "method": 8,
+      "local_offset": 232914792
+    },
+    {
+      "name": "res/layout/notification_media_cancel_action.xml",
+      "compressed": 375,
+      "uncompressed": 744,
+      "method": 8,
+      "local_offset": 232915166
+    },
+    {
+      "name": "res/layout/notification_template_big_media.xml",
+      "compressed": 641,
+      "uncompressed": 1696,
+      "method": 8,
+      "local_offset": 232915618
+    },
+    {
+      "name": "res/layout/notification_template_big_media_custom.xml",
+      "compressed": 990,
+      "uncompressed": 3044,
+      "method": 8,
+      "local_offset": 232916335
+    },
+    {
+      "name": "res/layout/notification_template_big_media_narrow.xml",
+      "compressed": 663,
+      "uncompressed": 1824,
+      "method": 8,
+      "local_offset": 232917408
+    },
+    {
+      "name": "res/layout/notification_template_big_media_narrow_custom.xml",
+      "compressed": 1034,
+      "uncompressed": 3216,
+      "method": 8,
+      "local_offset": 232918154
+    },
+    {
+      "name": "res/layout/notification_template_lines_media.xml",
+      "compressed": 807,
+      "uncompressed": 2872,
+      "method": 8,
+      "local_offset": 232919278
+    },
+    {
+      "name": "res/layout/notification_template_media.xml",
+      "compressed": 510,
+      "uncompressed": 1292,
+      "method": 8,
+      "local_offset": 232920163
+    },
+    {
+      "name": "res/layout/notification_template_media_custom.xml",
+      "compressed": 894,
+      "uncompressed": 2756,
+      "method": 8,
+      "local_offset": 232920745
+    },
+    {
+      "name": "res/layout/notification_template_part_chronometer.xml",
+      "compressed": 260,
+      "uncompressed": 440,
+      "method": 8,
+      "local_offset": 232921718
+    },
+    {
+      "name": "res/layout/notification_template_part_time.xml",
+      "compressed": 262,
+      "uncompressed": 440,
+      "method": 8,
+      "local_offset": 232922061
+    },
+    {
+      "name": "res/layout/select_dialog_item_material.xml",
+      "compressed": 351,
+      "uncompressed": 640,
+      "method": 8,
+      "local_offset": 232922399
+    },
+    {
+      "name": "res/layout/select_dialog_multichoice_material.xml",
+      "compressed": 443,
+      "uncompressed": 864,
+      "method": 8,
+      "local_offset": 232922822
+    },
+    {
+      "name": "res/layout/select_dialog_singlechoice_material.xml",
+      "compressed": 443,
+      "uncompressed": 864,
+      "method": 8,
+      "local_offset": 232923344
+    },
+    {
+      "name": "res/layout/support_simple_spinner_dropdown_item.xml",
+      "compressed": 270,
+      "uncompressed": 464,
+      "method": 8,
+      "local_offset": 232923867
+    },
+    {
+      "name": "res/mipmap-hdpi-v4/ic_launcher.png",
+      "compressed": 9312,
+      "uncompressed": 9312,
+      "method": 0,
+      "local_offset": 232924218
+    },
+    {
+      "name": "res/mipmap-hdpi-v4/ic_launcher_round.png",
+      "compressed": 9312,
+      "uncompressed": 9312,
+      "method": 0,
+      "local_offset": 232933596
+    },
+    {
+      "name": "res/mipmap-mdpi-v4/ic_launcher.png",
+      "compressed": 4870,
+      "uncompressed": 4870,
+      "method": 0,
+      "local_offset": 232942980
+    },
+    {
+      "name": "res/mipmap-mdpi-v4/ic_launcher_round.png",
+      "compressed": 4870,
+      "uncompressed": 4870,
+      "method": 0,
+      "local_offset": 232947914
+    },
+    {
+      "name": "res/mipmap-xhdpi-v4/ic_launcher.png",
+      "compressed": 14634,
+      "uncompressed": 14634,
+      "method": 0,
+      "local_offset": 232952854
+    },
+    {
+      "name": "res/mipmap-xhdpi-v4/ic_launcher_round.png",
+      "compressed": 14634,
+      "uncompressed": 14634,
+      "method": 0,
+      "local_offset": 232967554
+    },
+    {
+      "name": "res/mipmap-xxhdpi-v4/ic_launcher.png",
+      "compressed": 27036,
+      "uncompressed": 27036,
+      "method": 0,
+      "local_offset": 232982262
+    },
+    {
+      "name": "res/mipmap-xxhdpi-v4/ic_launcher_round.png",
+      "compressed": 27036,
+      "uncompressed": 27036,
+      "method": 0,
+      "local_offset": 233009364
+    },
+    {
+      "name": "res/mipmap-xxxhdpi-v4/ic_launcher.png",
+      "compressed": 40962,
+      "uncompressed": 40962,
+      "method": 0,
+      "local_offset": 233036472
+    },
+    {
+      "name": "res/mipmap-xxxhdpi-v4/ic_launcher_round.png",
+      "compressed": 40962,
+      "uncompressed": 40962,
+      "method": 0,
+      "local_offset": 233077502
+    },
+    {
+      "name": "res/raw/di.mp3",
+      "compressed": 9449,
+      "uncompressed": 9449,
+      "method": 0,
+      "local_offset": 233118538
+    },
+    {
+      "name": "res/raw/part_a_intro.mp3",
+      "compressed": 105133,
+      "uncompressed": 105133,
+      "method": 0,
+      "local_offset": 233128033
+    },
+    {
+      "name": "res/raw/part_a_listen.mp3",
+      "compressed": 50341,
+      "uncompressed": 50341,
+      "method": 0,
+      "local_offset": 233233221
+    },
+    {
+      "name": "res/raw/part_a_practice.mp3",
+      "compressed": 35446,
+      "uncompressed": 35446,
+      "method": 0,
+      "local_offset": 233283617
+    },
+    {
+      "name": "res/raw/part_a_read.mp3",
+      "compressed": 25399,
+      "uncompressed": 25399,
+      "method": 0,
+      "local_offset": 233319122
+    },
+    {
+      "name": "res/raw/part_b_answer.mp3",
+      "compressed": 113000,
+      "uncompressed": 113000,
+      "method": 0,
+      "local_offset": 233344575
+    },
+    {
+      "name": "res/raw/part_b_ask.mp3",
+      "compressed": 110013,
+      "uncompressed": 110013,
+      "method": 0,
+      "local_offset": 233457632
+    },
+    {
+      "name": "res/raw/part_b_intro.mp3",
+      "compressed": 192570,
+      "uncompressed": 192570,
+      "method": 0,
+      "local_offset": 233567697
+    },
+    {
+      "name": "res/raw/part_c_intro.mp3",
+      "compressed": 114234,
+      "uncompressed": 114234,
+      "method": 0,
+      "local_offset": 233760322
+    },
+    {
+      "name": "res/raw/part_c_retell.mp3",
+      "compressed": 48628,
+      "uncompressed": 48628,
+      "method": 0,
+      "local_offset": 233874610
+    },
+    {
+      "name": "res/raw/prep_cn.mp3",
+      "compressed": 29376,
+      "uncompressed": 29376,
+      "method": 0,
+      "local_offset": 233923296
+    },
+    {
+      "name": "res/raw/prep_en.mp3",
+      "compressed": 27216,
+      "uncompressed": 27216,
+      "method": 0,
+      "local_offset": 233952724
+    },
+    {
+      "name": "res/xml/file_paths.xml",
+      "compressed": 210,
+      "uncompressed": 552,
+      "method": 8,
+      "local_offset": 233979992
+    },
+    {
+      "name": "resources.arsc",
+      "compressed": 927836,
+      "uncompressed": 927836,
+      "method": 0,
+      "local_offset": 233980254
+    },
+    {
+      "name": "DebugProbesKt.bin",
+      "compressed": 782,
+      "uncompressed": 1738,
+      "method": 8,
+      "local_offset": 234908136
+    },
+    {
+      "name": "META-INF/androidx.activity_activity-compose.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234908965
+    },
+    {
+      "name": "META-INF/androidx.activity_activity-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909054
+    },
+    {
+      "name": "META-INF/androidx.activity_activity.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909138
+    },
+    {
+      "name": "META-INF/androidx.annotation_annotation-experimental.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909218
+    },
+    {
+      "name": "META-INF/androidx.appcompat_appcompat-resources.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909314
+    },
+    {
+      "name": "META-INF/androidx.appcompat_appcompat.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909406
+    },
+    {
+      "name": "META-INF/androidx.arch.core_core-runtime.version",
+      "compressed": 61,
+      "uncompressed": 67,
+      "method": 8,
+      "local_offset": 234909490
+    },
+    {
+      "name": "META-INF/androidx.autofill_autofill.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909629
+    },
+    {
+      "name": "META-INF/androidx.compose.animation_animation-core.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909710
+    },
+    {
+      "name": "META-INF/androidx.compose.animation_animation.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909806
+    },
+    {
+      "name": "META-INF/androidx.compose.foundation_foundation-layout.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909898
+    },
+    {
+      "name": "META-INF/androidx.compose.foundation_foundation.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234909998
+    },
+    {
+      "name": "META-INF/androidx.compose.material3_material3.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910090
+    },
+    {
+      "name": "META-INF/androidx.compose.material_material-icons-core.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910182
+    },
+    {
+      "name": "META-INF/androidx.compose.material_material-icons-extended.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910282
+    },
+    {
+      "name": "META-INF/androidx.compose.material_material-ripple.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910386
+    },
+    {
+      "name": "META-INF/androidx.compose.material_material.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910482
+    },
+    {
+      "name": "META-INF/androidx.compose.runtime_runtime-saveable.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910570
+    },
+    {
+      "name": "META-INF/androidx.compose.runtime_runtime.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910666
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-geometry.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910754
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-graphics.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910838
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-test-manifest.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234910922
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-text.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911014
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-tooling-data.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911094
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-tooling-preview.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911182
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-tooling.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911274
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-unit.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911358
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui-util.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911438
+    },
+    {
+      "name": "META-INF/androidx.compose.ui_ui.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911518
+    },
+    {
+      "name": "META-INF/androidx.core_core-ktx.version",
+      "compressed": 7,
+      "uncompressed": 7,
+      "method": 0,
+      "local_offset": 234911594
+    },
+    {
+      "name": "META-INF/androidx.core_core.version",
+      "compressed": 7,
+      "uncompressed": 7,
+      "method": 0,
+      "local_offset": 234911671
+    },
+    {
+      "name": "META-INF/androidx.cursoradapter_cursoradapter.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911743
+    },
+    {
+      "name": "META-INF/androidx.customview_customview-poolingcontainer.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911834
+    },
+    {
+      "name": "META-INF/androidx.customview_customview.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234911934
+    },
+    {
+      "name": "META-INF/androidx.drawerlayout_drawerlayout.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912018
+    },
+    {
+      "name": "META-INF/androidx.emoji2_emoji2-views-helper.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912106
+    },
+    {
+      "name": "META-INF/androidx.emoji2_emoji2.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912194
+    },
+    {
+      "name": "META-INF/androidx.exifinterface_exifinterface.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912270
+    },
+    {
+      "name": "META-INF/androidx.fragment_fragment.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912362
+    },
+    {
+      "name": "META-INF/androidx.graphics_graphics-path.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912442
+    },
+    {
+      "name": "META-INF/androidx.interpolator_interpolator.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912526
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-livedata-core-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912614
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-livedata-core.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912714
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-livedata.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912810
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-process.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912902
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-runtime-compose.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234912994
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-runtime-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913094
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-runtime.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913190
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-viewmodel-compose.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913282
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-viewmodel-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913382
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-viewmodel-savedstate.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913478
+    },
+    {
+      "name": "META-INF/androidx.lifecycle_lifecycle-viewmodel.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913582
+    },
+    {
+      "name": "META-INF/androidx.loader_loader.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913674
+    },
+    {
+      "name": "META-INF/androidx.media_media.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913750
+    },
+    {
+      "name": "META-INF/androidx.navigation_navigation-common-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913826
+    },
+    {
+      "name": "META-INF/androidx.navigation_navigation-common.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234913922
+    },
+    {
+      "name": "META-INF/androidx.navigation_navigation-compose.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914014
+    },
+    {
+      "name": "META-INF/androidx.navigation_navigation-runtime-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914106
+    },
+    {
+      "name": "META-INF/androidx.navigation_navigation-runtime.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914202
+    },
+    {
+      "name": "META-INF/androidx.profileinstaller_profileinstaller.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914294
+    },
+    {
+      "name": "META-INF/androidx.recyclerview_recyclerview.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914390
+    },
+    {
+      "name": "META-INF/androidx.savedstate_savedstate-ktx.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914478
+    },
+    {
+      "name": "META-INF/androidx.savedstate_savedstate.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914566
+    },
+    {
+      "name": "META-INF/androidx.startup_startup-runtime.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914650
+    },
+    {
+      "name": "META-INF/androidx.tracing_tracing.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914738
+    },
+    {
+      "name": "META-INF/androidx.vectordrawable_vectordrawable-animated.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914818
+    },
+    {
+      "name": "META-INF/androidx.vectordrawable_vectordrawable.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234914918
+    },
+    {
+      "name": "META-INF/androidx.versionedparcelable_versionedparcelable.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234915010
+    },
+    {
+      "name": "META-INF/androidx.viewpager_viewpager.version",
+      "compressed": 6,
+      "uncompressed": 6,
+      "method": 0,
+      "local_offset": 234915114
+    },
+    {
+      "name": "META-INF/kotlinx_coroutines_android.version",
+      "compressed": 5,
+      "uncompressed": 5,
+      "method": 0,
+      "local_offset": 234915198
+    },
+    {
+      "name": "META-INF/kotlinx_coroutines_core.version",
+      "compressed": 5,
+      "uncompressed": 5,
+      "method": 0,
+      "local_offset": 234915277
+    },
+    {
+      "name": "META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler",
+      "compressed": 50,
+      "uncompressed": 54,
+      "method": 8,
+      "local_offset": 234915353
+    },
+    {
+      "name": "META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory",
+      "compressed": 49,
+      "uncompressed": 52,
+      "method": 8,
+      "local_offset": 234915495
+    },
+    {
+      "name": "kotlin/annotation/annotation.kotlin_builtins",
+      "compressed": 523,
+      "uncompressed": 865,
+      "method": 8,
+      "local_offset": 234915641
+    },
+    {
+      "name": "kotlin/collections/collections.kotlin_builtins",
+      "compressed": 1489,
+      "uncompressed": 3635,
+      "method": 8,
+      "local_offset": 234916238
+    },
+    {
+      "name": "kotlin/coroutines/coroutines.kotlin_builtins",
+      "compressed": 116,
+      "uncompressed": 137,
+      "method": 8,
+      "local_offset": 234917803
+    },
+    {
+      "name": "kotlin/internal/internal.kotlin_builtins",
+      "compressed": 355,
+      "uncompressed": 583,
+      "method": 8,
+      "local_offset": 234917993
+    },
+    {
+      "name": "kotlin/kotlin.kotlin_builtins",
+      "compressed": 5129,
+      "uncompressed": 18653,
+      "method": 8,
+      "local_offset": 234918418
+    },
+    {
+      "name": "kotlin/ranges/ranges.kotlin_builtins",
+      "compressed": 1256,
+      "uncompressed": 3349,
+      "method": 8,
+      "local_offset": 234923606
+    },
+    {
+      "name": "kotlin/reflect/reflect.kotlin_builtins",
+      "compressed": 1246,
+      "uncompressed": 2370,
+      "method": 8,
+      "local_offset": 234924928
+    },
+    {
+      "name": "okhttp3/internal/publicsuffix/NOTICE",
+      "compressed": 149,
+      "uncompressed": 218,
+      "method": 8,
+      "local_offset": 234926242
+    },
+    {
+      "name": "okhttp3/internal/publicsuffix/publicsuffixes.gz",
+      "compressed": 41394,
+      "uncompressed": 41394,
+      "method": 0,
+      "local_offset": 234926457
+    }
+  ]
+}
