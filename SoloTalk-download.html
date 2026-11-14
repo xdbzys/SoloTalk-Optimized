@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SoloTalk v2.4.1 下载 · 多镜像加速</title>
+<style>
+  :root{ --bg:#0f1220; --card:#1a1f33; --fg:#e8ecf5; --muted:#9aa3b8; --acc:#4f8cff; --ok:#36d399; --warn:#fbbd23; --line:#2a3150; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .banner{background:linear-gradient(90deg,#13233f,#1a1f33);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:22px;font-size:13.5px}
+  .banner b{color:var(--ok)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .name{font-weight:600;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sz{font-size:12px;color:var(--muted);font-weight:400}
+  .meta{color:var(--muted);font-size:12.5px;margin:6px 0 12px}
+  .btns{display:flex;gap:10px;flex-wrap:wrap}
+  a.btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:10px 14px;border-radius:10px;font-size:14px;font-weight:600;transition:.15s}
+  .btn.acc{background:var(--acc);color:#fff}
+  .btn.acc:hover{filter:brightness(1.08)}
+  .btn.ghost{background:#222a44;color:var(--fg);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:var(--acc)}
+  .tag{font-size:11px;padding:2px 7px;border-radius:999px;font-weight:600}
+  .tag.fast{background:rgba(54,211,153,.15);color:var(--ok);border:1px solid rgba(54,211,153,.4)}
+  .tag.slow{background:rgba(251,189,35,.12);color:var(--warn);border:1px solid rgba(251,189,35,.35)}
+  .tag.err{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.35)}
+  .tag.idle{background:#222a44;color:var(--muted);border:1px solid var(--line)}
+  details{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
+  summary{cursor:pointer;color:var(--muted);font-size:13px}
+  code{background:#0c0f1c;padding:2px 6px;border-radius:6px;font-size:12px;word-break:break-all;color:#bcd2ff}
+  .foot{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
+  .pill{display:inline-block;background:#222a44;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SoloTalk 优化版 v2.4.1 下载</h1>
+  <div class="sub">原生安卓 · 广东 CELST 双维度精确诊断 · 包名 <code>com.solotalk.app</code></div>
+
+  <div class="banner">
+    ⚡ <b>下载慢/打不开？</b> 优先点 <b>「加速镜像（推荐）」</b> 按钮——走 ghproxy CDN，实测可达直连数倍速度且<b>支持断点续传</b>；
+    若镜像偶发不可用，再用「GitHub 官方」兜底。页面打开慢可改用下方 jsDelivr 直链。
+  </div>
+
+  <div id="assets"></div>
+
+  <details>
+    <summary>展开：文件校验值（SHA-256，下载后建议核对）</summary>
+    <div id="checksums" class="meta" style="margin-top:10px"></div>
+  </details>
+
+  <div class="foot">
+    <div><span class="pill">APK</span><span class="pill">源码包</span><span class="pill">增量 patch</span> 三个资产均来自 GitHub Release <code>v2.4.1</code>。</div>
+    <div>加速镜像域名 <code>ghproxy.net</code> 为第三方公共代理，仅转发 GitHub 资产；如对隐私敏感请改用 GitHub 官方链接。</div>
+    <div>SHA-256 校验（示例，Windows）：<code>certutil -hashfile SoloTalk-Celst-v2.4.1.apk SHA256</code>；macOS/Linux：<code>sha256sum 文件名</code>。</div>
+    <div style="margin-top:8px;color:#f87171">⚠️ 如使用过明文 GitHub Token，请尽快到 GitHub → Settings → Developer settings → PAT 撤销并重新生成。</div>
+  </div>
+</div>
+
+<script>
+const REPO = "xdbzys/SoloTalk-Optimized";
+const TAG  = "v2.4.1";
+const GH   = "https://github.com/" + REPO + "/releases/download/" + TAG + "/";
+const PROXY = "https://ghproxy.net/https://github.com/" + REPO + "/releases/download/" + TAG + "/";
+const MIRRORS = [
+  { key:"proxy", label:"加速镜像（推荐）", cls:"acc", base:PROXY },
+  { key:"gh",    label:"GitHub 官方",     cls:"ghost", base:GH }
+];
+const ASSETS = [
+  { file:"SoloTalk-Celst-v2.4.1.apk", size:"169.4 MB",
+    sha:"0706585becf906fb2e42ebd72dbbf98236e710e059befc88d4978d8d021f7df3" },
+  { file:"SoloTalk-source-v2.4.1.zip", size:"67.3 MB",
+    sha:"0391a256815c485bdcbc5636b8c15c2769c61fae1b003fdc6b15d82c0f89683a" },
+  { file:"SoloTalk-v2.4.1-patch.patch", size:"57.5 KB",
+    sha:"c7e352b7f49e9fe9f3484a64ddd8abc5e99c00ccdcb33cfb0710eea9e31eafe7" }
+];
+
+const assetsEl = document.getElementById("assets");
+const csEl = document.getElementById("checksums");
+ASSETS.forEach(a=>{
+  const card = document.createElement("div");
+  card.className = "card";
+  let btns = "";
+  MIRRORS.forEach(m=>{
+    const url = m.base + a.file;
+    btns += `<a class="btn ${m.cls}" href="${url}" data-asset="${a.file}" data-mirror="${m.key}" download>${m.label} <span class="tag idle" id="t-${a.file}-${m.key}">测速中…</span></a>`;
+  });
+  card.innerHTML = `
+    <div class="name">${a.file} <span class="sz">${a.size}</span></div>
+    <div class="meta">点击按钮即开始下载（镜像链接支持断点续传，失败可重试/续传）</div>
+    <div class="btns">${btns}</div>`;
+  assetsEl.appendChild(card);
+  csEl.innerHTML += `<div><code>${a.file}</code></div><div style="margin:2px 0 8px;color:#bcd2ff">SHA-256: ${a.sha}</div>`;
+});
+
+// 自动测速：对每资产每镜像发一个极小 range 请求，按往返时延标记快慢（no-cors，仅计时）
+async function probe(assetFile, mirrorKey, url){
+  const tag = document.getElementById("t-"+assetFile+"-"+mirrorKey);
+  const t0 = performance.now();
+  try{
+    const ctrl = new AbortController();
+    const to = setTimeout(()=>ctrl.abort(), 9000);
+    await fetch(url, {method:"GET", headers:{"Range":"bytes=0-0"}, mode:"no-cors", cache:"no-store", signal:ctrl.signal});
+    clearTimeout(to);
+    const ms = performance.now() - t0;
+    if(ms < 1500) tag.className="tag fast", tag.textContent="快 "+(ms|0)+"ms";
+    else if(ms < 5000) tag.className="tag slow", tag.textContent="一般 "+(ms|0)+"ms";
+    else tag.className="tag slow", tag.textContent=(ms|0)+"ms";
+  }catch(e){
+    tag.className="tag err", tag.textContent="不可用";
+  }
+}
+MIRRORS.forEach(m=>{
+  ASSETS.forEach(a=> probe(a.file, m.key, m.base + a.file));
+});
+</script>
+</body>
+</html>
