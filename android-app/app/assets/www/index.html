@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>SoloTalk 优化版 · 广东听说</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎤</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="backBtn" class="iconbtn" style="visibility:hidden">‹ 返回</button>
+    <div class="title">SoloTalk 优化版</div>
+    <button id="stopBtn" class="iconbtn" onclick="SoloBridge.stopSpeak()">■ 停止</button>
+  </header>
+
+  <!-- 题库列表 -->
+  <section id="listView" class="view">
+    <div class="hero">
+      <h1>广东高考英语听说 · 18 套带出处题库</h1>
+      <p>离线评分（CELST 引擎）· 系统语音朗读 · 语音识别打分</p>
+    </div>
+    <div id="paperList" class="paper-list"></div>
+    <footer class="foot">数据来源：广东省考试公开资料整理，仅供个人练习。评分采用 CELST-2021 折算（卷面 60 ÷ 3 四舍五入 = 高考 20 分）。</footer>
+  </section>
+
+  <!-- 试卷详情 -->
+  <section id="examView" class="view" style="display:none">
+    <div id="examHeader" class="exam-header"></div>
+    <div class="tabs">
+      <button class="tab active" data-part="A" onclick="switchPart('A')">Part A 模仿朗读</button>
+      <button class="tab" data-part="B" onclick="switchPart('B')">Part B 角色扮演</button>
+      <button class="tab" data-part="C" onclick="switchPart('C')">Part C 故事复述</button>
+    </div>
+    <div id="partA" class="part"></div>
+    <div id="partB" class="part" style="display:none"></div>
+    <div id="partC" class="part" style="display:none"></div>
+    <div class="score-bar">
+      <button class="primary" onclick="runScoring()">📊 计算总分与逐维度评分</button>
+    </div>
+    <div id="report" class="report" style="display:none"></div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+  <script src="celst.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

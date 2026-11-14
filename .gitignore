@@ -15,3 +15,6 @@ Thumbs.db
 # 运行时下载缓存（避免误提交大依赖）
 /node_modules/
 /dist/
+
+# 安卓构建产物（APK 已单独发布到 Release）
+android-app/build/
