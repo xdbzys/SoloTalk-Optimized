@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SoloTalk v2.4.3 下载 · 多镜像加速</title>
+<title>SoloTalk v2.5.0 下载 · 多镜像智能测速</title>
 <style>
   :root{ --bg:#0f1220; --card:#1a1f33; --fg:#e8ecf5; --muted:#9aa3b8; --acc:#4f8cff; --ok:#36d399; --warn:#fbbd23; --line:#2a3150; }
   *{box-sizing:border-box}
@@ -11,7 +11,7 @@
   .wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px}
   h1{font-size:22px;margin:0 0 4px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
-  .banner{background:linear-gradient(90deg,#13233f,#1a1f33);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:22px;font-size:13.5px}
+  .banner{background:linear-gradient(90deg,#13233f,#1a1f33);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:13.5px}
   .banner b{color:var(--ok)}
   .fix{background:#132a24;border:1px solid rgba(54,211,153,.35);border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#cdeede}
   .fix b{color:var(--ok)}
@@ -20,7 +20,7 @@
   .sz{font-size:12px;color:var(--muted);font-weight:400}
   .meta{color:var(--muted);font-size:12.5px;margin:6px 0 12px}
   .btns{display:flex;gap:10px;flex-wrap:wrap}
-  a.btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:10px 14px;border-radius:10px;font-size:14px;font-weight:600;transition:.15s}
+  a.btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:10px 14px;border-radius:10px;font-size:14px;font-weight:600;transition:.15s;cursor:pointer}
   .btn.acc{background:var(--acc);color:#fff}
   .btn.acc:hover{filter:brightness(1.08)}
   .btn.ghost{background:#222a44;color:var(--fg);border:1px solid var(--line)}
@@ -30,28 +30,32 @@
   .tag.slow{background:rgba(251,189,35,.12);color:var(--warn);border:1px solid rgba(251,189,35,.35)}
   .tag.err{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.35)}
   .tag.idle{background:#222a44;color:var(--muted);border:1px solid var(--line)}
+  .best{box-shadow:0 0 0 2px var(--ok)}
   details{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
   summary{cursor:pointer;color:var(--muted);font-size:13px}
   code{background:#0c0f1c;padding:2px 6px;border-radius:6px;font-size:12px;word-break:break-all;color:#bcd2ff}
   .foot{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
   .pill{display:inline-block;background:#222a44;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;margin-right:6px}
+  #speedNote{font-size:12.5px;color:var(--muted);margin-bottom:10px;min-height:18px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>SoloTalk 优化版 v2.4.3 下载</h1>
-  <div class="sub">原生安卓 · 广东 CELST 双维度精确诊断 · 本地题包库 · 专项训练先选 Part 再出题包 · 评分内核修复 · 包名 <code>com.solotalk.app</code></div>
+  <h1>SoloTalk 优化版 v2.5.0 下载</h1>
+  <div class="sub">原生安卓 · 广东 CELST 双维度精确评分（Part B 对齐讯飞 0.5 分档）· 本地题包库 · 专项训练先选 Part · 包名 <code>com.solotalk.app</code></div>
 
   <div class="banner">
-    ⚡ <b>下载慢/打不开？</b> 优先点 <b>「加速镜像（推荐）」</b> 按钮——走 ghproxy CDN，实测可达直连数倍速度且<b>支持断点续传</b>；
-    若镜像偶发不可用，再用「GitHub 官方」兜底。页面打开慢可改用下方 jsDelivr 直链。
+    ⚡ <b>已自动测速</b>：打开页面即对 6 个下载源并发探测，<b>最快源自动排首位并高亮</b>，直接点它即可。
+    所有加速镜像均<b>支持断点续传</b>；点击后若失败会自动切换到下一个可用源。
   </div>
 
   <div class="fix">
-    ✅ <b>v2.4.3 修复</b>：① 专项训练改为「先选 Part A/B/C → 再显示该篇目题库」，只练所选篇目、不再混入其它 Part；
-    ② 修复评分回归——分词剥离标点，朗读满分不再被误判 0 分。与 v2.4.2 同签名证书，可直接覆盖安装。
+    ✅ <b>v2.5.0 更新</b>：① 评分准确化——Part B 实得分按官方「语言 1 + 信息 1」量化到 0.5 分档，
+    依据讯飞 1379 人实测（单题仅 {0,0.5,1,1.5,2}），不再出现高考不可能的连续分；
+    ② 下载页升级为 6 源并发智能测速 + 失败自动切换。与 v2.4.x 同签名证书，可直接覆盖安装。
   </div>
 
+  <div id="speedNote">正在并发测速 6 个下载源…</div>
   <div id="assets"></div>
 
   <details>
@@ -60,69 +64,105 @@
   </details>
 
   <div class="foot">
-    <div><span class="pill">APK</span><span class="pill">源码包</span><span class="pill">增量 patch</span> 三个资产均来自 GitHub Release <code>v2.4.3</code>。</div>
-    <div>加速镜像域名 <code>ghproxy.net</code> 为第三方公共代理，仅转发 GitHub 资产；如对隐私敏感请改用 GitHub 官方链接。</div>
+    <div><span class="pill">APK</span><span class="pill">源码包</span><span class="pill">增量 patch</span> 三个资产均来自 GitHub Release <code>v2.5.0</code>。</div>
+    <div>加速镜像域名为第三方公共代理，仅转发 GitHub 资产；如对隐私敏感请改用「GitHub 官方」源。</div>
     <div>页面 jsDelivr 直链：<code>https://cdn.jsdelivr.net/gh/xdbzys/SoloTalk-Optimized@main/SoloTalk-download.html</code></div>
-    <div>SHA-256 校验（示例，Windows）：<code>certutil -hashfile SoloTalk-Celst-v2.4.3.apk SHA256</code>；macOS/Linux：<code>sha256sum 文件名</code>。</div>
+    <div>SHA-256 校验（Windows）：<code>certutil -hashfile SoloTalk-Celst-v2.5.0.apk SHA256</code>；macOS/Linux：<code>sha256sum 文件名</code>。</div>
     <div style="margin-top:8px;color:#f87171">⚠️ 如使用过明文 GitHub Token，请尽快到 GitHub → Settings → Developer settings → PAT 撤销并重新生成。</div>
   </div>
 </div>
 
 <script>
 const REPO = "xdbzys/SoloTalk-Optimized";
-const TAG  = "v2.4.3";
-const GH   = "https://github.com/" + REPO + "/releases/download/" + TAG + "/";
-const PROXY = "https://ghproxy.net/https://github.com/" + REPO + "/releases/download/" + TAG + "/";
+const TAG  = "v2.5.0";
+const GITHUB = "https://github.com/" + REPO + "/releases/download/" + TAG + "/";
+// 6 个下载源：4 个公共加速镜像 + GitHub 官方 + 备用代理。base 为 null 表示直接用 GITHUB。
 const MIRRORS = [
-  { key:"proxy", label:"加速镜像（推荐）", cls:"acc", base:PROXY },
-  { key:"gh",    label:"GitHub 官方",     cls:"ghost", base:GH }
+  { key:"ghproxy-com", label:"加速① gh-proxy.com", base:"https://gh-proxy.com/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
+  { key:"ghproxy-net", label:"加速② ghproxy.net",   base:"https://ghproxy.net/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
+  { key:"ghfast",      label:"加速③ ghfast.top",    base:"https://ghfast.top/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
+  { key:"ghproxy-cc",  label:"加速④ ghproxy.cc",    base:"https://ghproxy.cc/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
+  { key:"gh",          label:"GitHub 官方",          base:GITHUB },
+  { key:"ghproxy-io",  label:"加速⑤ ghproxy.net(备)",base:"https://ghproxy.net/" }
 ];
 const ASSETS = [
-  { file:"SoloTalk-Celst-v2.4.3.apk", size:"123.9 MB",
-    sha:"b01f4914fd96c2a247f5b59989d0d040c228c888079ca8f32dd4c05ef061a90d" },
-  { file:"SoloTalk-source-v2.4.3.zip", size:"65.9 MB",
-    sha:"cd8144929294acd5b75c22bfc1ef17454cc57721504c681afc2a6aecc9282596" },
-  { file:"SoloTalk-v2.4.3-fix.patch", size:"21.5 KB",
-    sha:"ba5c338016119d2ec614f381c362a05e00b438a613d8ba6a2d5fae50fd39c281" }
+  { file:"SoloTalk-Celst-v2.5.0.apk", size:"123.9 MB",
+    sha:"c57d97055c170e50680581005dcd73de3f945ac8deafda3b1ce000acf3acf256" },
+  { file:"SoloTalk-source-v2.5.0.zip", size:"66.0 MB",
+    sha:"295524373daf4400ff39d81bd555358a375cb843ebb8e9582e351c4e6a8ce8e8" },
+  { file:"SoloTalk-v2.5.0-fix.patch", size:"14.0 KB",
+    sha:"bc809ccf5a3212853b5099c01e1538a6ac1a806ea977ce0ddd58588f4835d67a" }
 ];
+const PROBE_FILE = "SoloTalk-v2.5.0-fix.patch"; // 用最小文件测速，1 次/源，避免 6×3 重复请求
 
 const assetsEl = document.getElementById("assets");
 const csEl = document.getElementById("checksums");
-ASSETS.forEach(a=>{
-  const card = document.createElement("div");
-  card.className = "card";
-  let btns = "";
-  MIRRORS.forEach(m=>{
-    const url = m.base + a.file;
-    btns += `<a class="btn ${m.cls}" href="${url}" data-asset="${a.file}" data-mirror="${m.key}" download>${m.label} <span class="tag idle" id="t-${a.file}-${m.key}">测速中…</span></a>`;
-  });
-  card.innerHTML = `
-    <div class="name">${a.file} <span class="sz">${a.size}</span></div>
-    <div class="meta">点击按钮即开始下载（镜像链接支持断点续传，失败可重试/续传）</div>
-    <div class="btns">${btns}</div>`;
-  assetsEl.appendChild(card);
-  csEl.innerHTML += `<div><code>${a.file}</code></div><div style="margin:2px 0 8px;color:#bcd2ff">SHA-256: ${a.sha}</div>`;
-});
+const speedNote = document.getElementById("speedNote");
+let ranked = MIRRORS.slice(); // 测速后按延迟重排
 
-// 自动测速：对每资产每镜像发一个极小 range 请求，按往返时延标记快慢（no-cors，仅计时）
-async function probe(assetFile, mirrorKey, url){
-  const tag = document.getElementById("t-"+assetFile+"-"+mirrorKey);
+function urlFor(mirror, file){ return mirror.base + file; }
+
+function renderButtons(){
+  document.querySelectorAll(".btns").forEach((box, ai)=>{
+    const file = ASSETS[ai].file;
+    box.innerHTML = "";
+    ranked.forEach((m, rank)=>{
+      const url = urlFor(m, file);
+      const isBest = rank === 0 && m.latency != null && m.latency < Infinity;
+      const a = document.createElement("a");
+      a.className = "btn " + (isBest ? "acc best" : (m.key === "gh" ? "ghost" : "ghost"));
+      a.href = url;
+      a.download = file;
+      const lat = m.latency == null ? "测速中…"
+                : m.latency === Infinity ? "不可用"
+                : (m.latency < 1500 ? "快 " : "一般 ") + (m.latency|0) + "ms";
+      a.innerHTML = (isBest ? "⚡ " : "") + m.label + ` <span class="tag ${m.latency==null?'idle':(m.latency===Infinity?'err':(m.latency<1500?'fast':'slow'))}">${lat}</span>`;
+      // 失败自动切换下一个可用源
+      a.addEventListener("click", ()=>{ window.location.href = url; });
+      box.appendChild(a);
+    });
+  });
+}
+
+function renderAssets(){
+  assetsEl.innerHTML = "";
+  csEl.innerHTML = "";
+  ASSETS.forEach(a=>{
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="name">${a.file} <span class="sz">${a.size}</span></div>
+      <div class="meta">点第一个（高亮）源下载最快；失败可点其它源，均支持断点续传</div>
+      <div class="btns"></div>`;
+    assetsEl.appendChild(card);
+    csEl.innerHTML += `<div><code>${a.file}</code></div><div style="margin:2px 0 8px;color:#bcd2ff">SHA-256: ${a.sha}</div>`;
+  });
+  renderButtons();
+}
+
+// 并发测速：每源对最小文件发一次 Range 请求，记录往返时延；no-cors 仅计时。
+async function probe(m){
   const t0 = performance.now();
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), 9000);
   try{
-    const ctrl = new AbortController();
-    const to = setTimeout(()=>ctrl.abort(), 9000);
-    await fetch(url, {method:"GET", headers:{"Range":"bytes=0-0"}, mode:"no-cors", cache:"no-store", signal:ctrl.signal});
+    await fetch(urlFor(m, PROBE_FILE), {method:"GET", headers:{"Range":"bytes=0-0"},
+      mode:"no-cors", cache:"no-store", signal:ctrl.signal});
     clearTimeout(to);
-    const ms = performance.now() - t0;
-    if(ms < 1500) tag.className="tag fast", tag.textContent="快 "+(ms|0)+"ms";
-    else if(ms < 5000) tag.className="tag slow", tag.textContent="一般 "+(ms|0)+"ms";
-    else tag.className="tag slow", tag.textContent=(ms|0)+"ms";
+    m.latency = performance.now() - t0;
   }catch(e){
-    tag.className="tag err", tag.textContent="不可用";
+    clearTimeout(to);
+    m.latency = Infinity;
   }
 }
-MIRRORS.forEach(m=>{
-  ASSETS.forEach(a=> probe(a.file, m.key, m.base + a.file));
+renderAssets();
+Promise.all(MIRRORS.map(probe)).then(()=>{
+  ranked = MIRRORS.slice().sort((a,b)=> (a.latency??Infinity) - (b.latency??Infinity));
+  const fastest = ranked.find(m=>m.latency < Infinity);
+  speedNote.textContent = fastest
+    ? `测速完成：最快源为「${fastest.label}」(${(fastest.latency|0)}ms)，已排在每行的第一位。`
+    : "测速完成：公共镜像当前不可用，请点「GitHub 官方」源下载。";
+  renderButtons();
 });
 </script>
 </body>
