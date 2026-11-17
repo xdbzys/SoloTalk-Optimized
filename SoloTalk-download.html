@@ -45,17 +45,17 @@
   <div class="sub">原生安卓 · 广东 CELST 双维度精确评分（Part B 对齐讯飞 0.5 分档）· 本地题包库 · 专项训练先选 Part · 包名 <code>com.solotalk.app</code></div>
 
   <div class="banner">
-    ⚡ <b>已自动测速</b>：打开页面即对 6 个下载源并发探测，<b>最快源自动排首位并高亮</b>，直接点它即可。
+    ⚡ <b>已自动测速</b>：打开页面即对 5 个下载源并发探测，<b>最快源自动排首位并高亮</b>，直接点它即可。
     所有加速镜像均<b>支持断点续传</b>；点击后若失败会自动切换到下一个可用源。
   </div>
 
   <div class="fix">
     ✅ <b>v2.5.0 更新</b>：① 评分准确化——Part B 实得分按官方「语言 1 + 信息 1」量化到 0.5 分档，
     依据讯飞 1379 人实测（单题仅 {0,0.5,1,1.5,2}），不再出现高考不可能的连续分；
-    ② 下载页升级为 6 源并发智能测速 + 失败自动切换。与 v2.4.x 同签名证书，可直接覆盖安装。
+    ② 下载页升级为 5 源并发智能测速 + 失败自动切换。与 v2.4.x 同签名证书，可直接覆盖安装。
   </div>
 
-  <div id="speedNote">正在并发测速 6 个下载源…</div>
+  <div id="speedNote">正在并发测速 5 个下载源…</div>
   <div id="assets"></div>
 
   <details>
@@ -76,14 +76,13 @@
 const REPO = "xdbzys/SoloTalk-Optimized";
 const TAG  = "v2.5.0";
 const GITHUB = "https://github.com/" + REPO + "/releases/download/" + TAG + "/";
-// 6 个下载源：4 个公共加速镜像 + GitHub 官方 + 备用代理。base 为 null 表示直接用 GITHUB。
+// 5 个下载源：4 个公共加速镜像 + GitHub 官方。
 const MIRRORS = [
   { key:"ghproxy-com", label:"加速① gh-proxy.com", base:"https://gh-proxy.com/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
   { key:"ghproxy-net", label:"加速② ghproxy.net",   base:"https://ghproxy.net/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
   { key:"ghfast",      label:"加速③ ghfast.top",    base:"https://ghfast.top/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
   { key:"ghproxy-cc",  label:"加速④ ghproxy.cc",    base:"https://ghproxy.cc/https://github.com/"+REPO+"/releases/download/"+TAG+"/" },
-  { key:"gh",          label:"GitHub 官方",          base:GITHUB },
-  { key:"ghproxy-io",  label:"加速⑤ ghproxy.net(备)",base:"https://ghproxy.net/" }
+  { key:"gh",          label:"GitHub 官方",          base:GITHUB }
 ];
 const ASSETS = [
   { file:"SoloTalk-Celst-v2.5.0.apk", size:"123.9 MB",
@@ -93,7 +92,7 @@ const ASSETS = [
   { file:"SoloTalk-v2.5.0-fix.patch", size:"14.0 KB",
     sha:"bc809ccf5a3212853b5099c01e1538a6ac1a806ea977ce0ddd58588f4835d67a" }
 ];
-const PROBE_FILE = "SoloTalk-v2.5.0-fix.patch"; // 用最小文件测速，1 次/源，避免 6×3 重复请求
+const PROBE_FILE = "SoloTalk-v2.5.0-fix.patch"; // 用最小文件测速，1 次/源，避免旧版 6 次重复请求
 
 const assetsEl = document.getElementById("assets");
 const csEl = document.getElementById("checksums");
